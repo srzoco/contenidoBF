@@ -29,6 +29,16 @@
   function ajustes() { return (S.data && S.data.ajustes) || L.AJUSTES_BASE; }
   function piezas() { return (S.data && S.data.piezas) || []; }
   function eventos() { return (S.data && S.data.eventos) || []; }
+  function grabaciones() { return (S.data && S.data.grabaciones) || []; }
+  function grabEventos() { return (S.data && S.data.grabacion_eventos) || []; }
+  function grabacion(id) { return grabaciones().filter(function (g) { return g.id === id; })[0] || null; }
+  function grabSemana() { return L.grabacionDeSemana(grabaciones(), S.hoy); }
+  function grabNecesitaMe() {
+    var g = grabSemana(), y = yo();
+    if (!g || !y) return false;
+    var e = L.estadoGrabacion(g, S.data.equipo);
+    return e.pasada || (e.abierta && (g.confirmaciones || []).indexOf(y.user_id) < 0);
+  }
   function pieza(id) { return piezas().filter(function (p) { return p.id === id; })[0] || null; }
   function yo() {
     var s = store.sesion(); if (!s || !S.data) return null;
@@ -62,10 +72,11 @@
     if (!store.sesion()) { S.cargando = false; render(); return Promise.resolve(); }
     if (!silencioso) S.cargando = true;
     return store.cargarTodo().then(function (d) {
-      var firma = JSON.stringify(d).length + '|' + (d.eventos.length) + '|' + d.piezas.map(function (p) { return p.actualizado_en; }).join(',');
+      var firma = JSON.stringify(d).length + '|' + (d.eventos.length) + '|' + d.piezas.map(function (p) { return p.actualizado_en; }).join(',') + '|' + (d.grabaciones || []).map(function (g) { return g.actualizado_en; }).join(',');
       var cambio = firma !== S.firma;
       S.firma = firma;
       S.data = d; S.hoy = L.hoyISO(); S.cargando = false; S.error = null;
+      if (asegurarGrabacion()) return;
       if (!sinPintar && (!silencioso || cambio)) render();
     }, function (e) {
       S.cargando = false;
@@ -73,6 +84,27 @@
       if (!S.data) S.error = e.message || String(e);
       else aviso(e.message || String(e));
       render();
+    });
+  }
+
+  // Cada semana la app propone sola el día y la hora por defecto (nadie tiene que acordarse de escribir).
+  function asegurarGrabacion() {
+    if (!S.data || !yo() || grabSemana()) return false;
+    var def = L.grabacionPorDefecto(ajustes(), new Date());
+    if (S.intentoGrab === def.semana) return false;
+    S.intentoGrab = def.semana;
+    def.id = ST.uuid();
+    store.insertar('grabaciones', def).then(function (g) {
+      return store.insertar('grabacion_eventos', { grabacion_id: g.id, tipo: 'auto', texto: null, datos: { fecha: g.fecha, hora: g.hora } });
+    }).catch(function () { /* la otra persona la creó al mismo tiempo: basta con recargar */ }).then(function () { recargar(true); });
+    return true;
+  }
+  function ejecutarG(g, r) {
+    return store.actualizar('grabaciones', g.id, r.patch, r.match).then(function (fila) {
+      if (!fila) throw errU('La grabación cambió mientras la veías (la otra persona la movió). Ya actualicé los datos: revisa y vuelve a intentar.');
+      var sec = Promise.resolve();
+      (r.eventos || []).forEach(function (ev) { sec = sec.then(function () { return store.insertar('grabacion_eventos', Object.assign({ grabacion_id: g.id }, ev)); }); });
+      return sec.then(function () { return fila; });
     });
   }
 
@@ -128,6 +160,7 @@
       case undefined: return vistaPendientes();
       case 'revisar': return vistaLote();
       case 'p': return vistaPieza(r.parts[1]);
+      case 'grabacion': return vistaGrabacion(r.parts[1]);
       case 'nueva': return vistaNueva(r.q);
       case 'piezas': return vistaPiezas(r.q);
       case 'calendario': return vistaCalendario(r.q);
@@ -141,7 +174,7 @@
     var r = ruta(), sec = r.parts[0] || '';
     var demo = store.modo === 'demo';
     var ses = store.sesion();
-    var pend = (!sinNav && rol()) ? L.pendientes(piezas(), eventos(), rol(), S.hoy, ajustes()).total : 0;
+    var pend = (!sinNav && rol()) ? L.pendientes(piezas(), eventos(), rol(), S.hoy, ajustes()).total + (grabNecesitaMe() ? 1 : 0) : 0;
     var tab = function (href, clave, icono, texto, badge) {
       var activo = sec === clave || (clave === '' && sec === 'revisar');
       return '<a href="' + href + '" class="tab' + (activo ? ' activo' : '') + '"' + (activo ? ' aria-current="page"' : '') + '>' + icono + '<span>' + texto + '</span>' +
@@ -221,6 +254,7 @@
   function vistaPendientes() {
     var r = L.pendientes(piezas(), eventos(), rol(), S.hoy, ajustes());
     var html = '<h1 class="saludo">' + saludo() + ', ' + esc(yo().nombre) + '</h1><p class="fecha-hoy">' + L.fmtFechaLarga(S.hoy) + ' · ' + L.TIPO_DIA[L.diaCfg(ajustes(), S.hoy).tipo] + '</p>';
+    html += tarjetaGrabacion(grabSemana(), true);
     if (rol() === 'aprueba') {
       if (r.revisar.length) {
         html += '<section class="hero"><div><p class="hero-n">' + r.revisar.length + '</p><p class="hero-t">' + (r.revisar.length === 1 ? 'pieza espera tu aprobación' : 'piezas esperan tu aprobación') + '</p></div>' +
@@ -412,6 +446,90 @@
   function iniciarLote() {
     var r = L.pendientes(piezas(), eventos(), 'aprueba', S.hoy, ajustes());
     S.lote = { ids: r.revisar.map(function (p) { return p.id; }), i: 0, hechos: [] };
+  }
+
+  // ---------- Grabación semanal ----------
+  function cuandoG(g) { return L.fmtFechaLarga(g.fecha) + ' · ' + L.fmtHora(g.hora); }
+  function tarjetaGrabacion(g, resumen) {
+    if (!g) return '';
+    var e = L.estadoGrabacion(g, S.data.equipo);
+    var y = yo();
+    var yoConfirme = (g.confirmaciones || []).indexOf(y.user_id) >= 0;
+    var titulos = piezas().filter(function (p) { return p.grabacion_id === g.id && p.fase !== 'archivada'; });
+    var clase = 'card grabacion' + (e.urgente || e.pasada ? ' urgente' : '') + (g.estado === 'hecha' ? ' hecha' : '') + (g.estado === 'cancelada' ? ' cancelada' : '');
+    var html = '<section class="' + clase + '"><div class="bloque-head"><h2>🎬 Grabación de la semana</h2>' +
+      (resumen ? '<a class="btn link" href="#/grabacion/' + g.id + '">Ver detalle</a>' : '') + '</div>' +
+      '<p class="grab-cuando">' + esc(cuandoG(g)) + '</p>';
+    if (g.estado === 'hecha') return html + '<p class="vacio-ok">✅ Grabado</p>' + (resumen ? '' : '<button class="btn link" data-act="reabrir-grab" data-id="' + g.id + '">Reabrir</button>') + '</section>';
+    if (g.estado === 'cancelada') return html + '<p class="rojo">No se grabó' + (g.nota ? ': ' + esc(g.nota) : '') + '</p>' + (resumen ? '' : '<button class="btn link" data-act="reabrir-grab" data-id="' + g.id + '">Reabrir</button>') + '</section>';
+    html += '<p class="grab-conf">' + S.data.equipo.map(function (m) {
+      var ok = (g.confirmaciones || []).indexOf(m.user_id) >= 0;
+      return '<span class="' + (ok ? 'ok' : 'falta') + '">' + (ok ? '✓ ' : '⏳ ') + esc(m.nombre) + '</span>';
+    }).join('') + '</p>';
+    if (e.pasada) {
+      html += '<p><b>¿Se grabó?</b></p><div class="acciones"><button class="btn ok" data-act="hecha-grab" data-id="' + g.id + '">Sí, grabamos</button><button class="btn sec" data-act="no-grabo" data-id="' + g.id + '">No se grabó</button></div>';
+    } else {
+      if (e.completa) html += '<p class="vacio-ok">Confirmada por las dos ✅</p>';
+      else if (e.urgente) html += '<p class="rojo"><b>Falta confirmar y es en menos de 24 h.</b></p>';
+      html += '<div class="acciones">' +
+        (yoConfirme ? '' : '<button class="btn ok" data-act="confirmar-grab" data-id="' + g.id + '">Confirmar</button>') +
+        '<button class="btn sec" data-act="reagendar" data-id="' + g.id + '">Proponer otro día</button>' +
+        (yoConfirme && !e.completa ? recordarGrab(g, 'confirme') : '') + '</div>';
+    }
+    if (resumen) html += '<p class="ayuda"><a href="#/grabacion/' + g.id + '">' + (titulos.length ? plural(titulos.length, 'video planeado', 'videos planeados') : 'Aún no hay videos planeados') + ' ›</a></p>';
+    return html + '</section>';
+  }
+  function otraPersona() {
+    var y = yo();
+    return (S.data.equipo.filter(function (m) { return m.user_id !== y.user_id; })[0]) || null;
+  }
+  function recordarGrab(g, tipo) {
+    var o = otraPersona();
+    return '<a class="btn wa" target="_blank" rel="noopener" href="' + esc(L.waLink(o && o.telefono, L.msgGrabacion(g, tipo, base(), o && o.nombre))) + '">' + ICON.wa + ' Avisar a ' + esc(o ? o.nombre : 'la otra') + '</a>';
+  }
+  function vistaGrabacion(id) {
+    var g = id ? grabacion(id) : grabSemana();
+    if (!g) return '<p>No encontré esa grabación. <a href="#/">Volver</a></p>';
+    var html = '<a href="#/" class="volver" data-act="volver">‹ Volver</a>' + tarjetaGrabacion(g, false);
+    // Qué grabar
+    var planeados = piezas().filter(function (p) { return p.grabacion_id === g.id && p.fase !== 'archivada'; });
+    var ideas = piezas().filter(function (p) { return p.fase === 'idea' && !p.grabacion_id; });
+    html += '<section class="card"><h2>Qué vamos a grabar</h2>' +
+      (planeados.length ? '<div class="lista">' + planeados.map(function (p) {
+        var listo = p.fase !== 'idea';
+        return '<div class="item">' + tipoIcono(p) + '<a class="item-cuerpo" href="#/p/' + p.id + '"><span class="item-titulo">' + esc(p.titulo) + '</span><span class="item-meta">' + (listo ? '<span class="pill ok">Grabado</span>' : '<span class="pill gris">Por grabar</span>') + (p.producto ? '<span class="extra">' + esc(p.producto) + '</span>' : '') + '</span></a>' +
+          (listo ? '' : '<button class="btn chico ok" data-act="grabado" data-id="' + p.id + '">Grabado ✓</button>') + '</div>';
+      }).join('') + '</div>' : '<p class="muted">Todavía no hay videos planeados para esta sesión.</p>') +
+      (g.estado === 'cancelada' ? '' : '<form data-form="titulo-grab" data-id="' + g.id + '" class="agregar-titulo"><input name="titulo" placeholder="Título del video" autocomplete="off" required>' +
+        '<select name="tipo" aria-label="Tipo"><option value="reel">Reel</option><option value="carrusel">Carrusel</option></select><button class="btn chico" type="submit">Agregar</button></form>') +
+      '</section>';
+    if (ideas.length && g.estado !== 'cancelada') {
+      html += '<section class="card"><h2>Ideas del banco</h2><p class="ayuda">Súmalas a esta sesión para no llegar a grabar sin plan.</p><div class="lista">' + ideas.map(function (p) {
+        return '<div class="item">' + tipoIcono(p) + '<span class="item-cuerpo"><span class="item-titulo">' + esc(p.titulo) + '</span>' + (p.producto ? '<span class="item-meta"><span class="extra">' + esc(p.producto) + '</span></span>' : '') + '</span>' +
+          '<button class="btn chico sec" data-act="agregar-a-grab" data-id="' + p.id + '" data-grab="' + g.id + '">+ Agregar</button></div>';
+      }).join('') + '</div></section>';
+    }
+    // Racha
+    var r = L.racha(grabaciones(), S.hoy, 6);
+    html += '<section class="card"><h2>Últimas semanas</h2><div class="racha">' + r.map(function (x) {
+      var ic = x.estado === 'hecha' ? '✅' : x.estado === 'cancelada' ? '❌' : '·';
+      return '<span title="Semana del ' + L.fmtFecha(x.semana) + '"><b>' + ic + '</b><small>' + (+x.semana.slice(8)) + '/' + (+x.semana.slice(5, 7)) + '</small></span>';
+    }).join('') + '</div></section>';
+    // Historial
+    var evs = grabEventos().filter(function (e) { return e.grabacion_id === g.id; }).slice().reverse();
+    html += '<section class="card historial"><h2>Historial</h2><ol class="timeline">' + evs.map(function (e) {
+      var d = e.datos || {}, q = '<b>' + esc(nombreDe(e.autor)) + '</b>', ic = '•', t = '', extra = '';
+      switch (e.tipo) {
+        case 'auto': ic = '🗓️'; t = 'La app propuso ' + esc(L.fmtFechaLarga(d.fecha) + ' · ' + L.fmtHora(d.hora)); break;
+        case 'confirmacion': ic = '✓'; t = q + ' confirmó ' + esc(L.fmtFecha(d.fecha) + ', ' + L.fmtHora(d.hora)); break;
+        case 'reagenda': ic = '🔁'; t = q + ' reagendó: ' + esc(L.fmtFecha(d.antes.fecha) + ' ' + L.fmtHora(d.antes.hora)) + ' → <b>' + esc(L.fmtFecha(d.despues.fecha) + ' ' + L.fmtHora(d.despues.hora)) + '</b>'; if (e.texto) extra = '<p>' + nl2br(e.texto) + '</p>'; break;
+        case 'hecha': ic = '✅'; t = q + ' marcó que se grabó'; break;
+        case 'cancelada': ic = '❌'; t = q + ' marcó que no se grabó'; if (e.texto) extra = '<p>' + nl2br(e.texto) + '</p>'; break;
+        case 'reabierta': ic = '↩️'; t = q + ' la reabrió'; break;
+      }
+      return '<li class="ev ev-' + e.tipo + '"><span class="ev-ic" aria-hidden="true">' + ic + '</span><div class="ev-cuerpo"><p class="ev-txt">' + t + '</p>' + extra + '<time>' + fmtFechaHora(e.creado_en) + ' · ' + L.haceCuanto(e.creado_en) + '</time></div></li>';
+    }).join('') + '</ol></section>';
+    return html;
   }
 
   // ---------- Vista: Pieza ----------
@@ -706,8 +824,13 @@
         }
         return '<div class="cal-fila"><span class="plat ' + pl + '">' + L.PLAT_CORTO[pl] + '</span><div class="cal-items">' + cont + '</div></div>';
       }).join('');
+      var gs = grabaciones().filter(function (g) { return g.fecha === d && g.estado !== 'cancelada'; });
+      var filaG = gs.map(function (g) {
+        var ok = g.estado === 'hecha' ? '✅' : L.estadoGrabacion(g, S.data.equipo).completa ? '✓' : '⏳';
+        return '<a class="cal-grab" href="#/grabacion/' + g.id + '">🎬 Grabación ' + L.fmtHora(g.hora) + ' ' + ok + '</a>';
+      }).join('');
       html += '<div class="cal-dia' + (d === S.hoy ? ' hoy' : '') + (d < S.hoy ? ' pasado' : '') + ' t-' + c.tipo + '">' +
-        '<div class="cal-dia-head"><b>' + L.fmtFecha(d) + '</b><span>' + L.TIPO_DIA[c.tipo] + '</span></div>' +
+        '<div class="cal-dia-head"><b>' + L.fmtFecha(d) + '</b><span>' + L.TIPO_DIA[c.tipo] + '</span></div>' + filaG +
         (filas || '<p class="cal-libre">' + (c.tipo === 'historias' ? 'Día de historias' : 'Día libre') + '</p>') + '</div>';
     });
     return html + '</div><p class="ayuda leyenda">✅ publicado · ⏰ programado · 📝 fecha propuesta (falta aprobar) · ⚠️ pasó sin marcar</p>';
@@ -725,6 +848,7 @@
     var html = '<h1>Métricas</h1><div class="seg-tabs"><a href="#/metricas?dias=30"' + (dias === 30 ? ' class="on"' : '') + '>30 días</a><a href="#/metricas?dias=90"' + (dias === 90 ? ' class="on"' : '') + '>90 días</a></div>';
     html += '<div class="kpis">' +
       '<div class="kpi"><b>' + m.publicadas + '</b><span>publicaciones</span></div>' +
+      (function () { var r = L.racha(grabaciones(), S.hoy, Math.round(dias / 7)); var h = r.filter(function (x) { return x.estado === 'hecha'; }).length; return '<div class="kpi"><b>' + h + ' de ' + r.length + '</b><span>semanas con grabación</span></div>'; })() +
       '<div class="kpi"><b>' + (m.cumplimiento.pct == null ? '—' : m.cumplimiento.pct + '%') + '</b><span>del cronograma cumplido</span></div>' +
       '<div class="kpi"><b>' + L.fmtHoras(m.respuestaAprobacion.mediana) + '</b><span>tiempo típico de aprobación</span></div>' +
       '<div class="kpi"><b>' + L.fmtHoras(m.respuestaCorreccion.mediana) + '</b><span>tiempo típico de corrección</span></div>' +
@@ -767,6 +891,9 @@
         return '<label class="check mini"><input type="checkbox" name="plat_' + i + '_' + pl + '"' + ((c.plataformas || []).indexOf(pl) >= 0 ? ' checked' : '') + (editable ? '' : ' disabled') + '> ' + L.PLAT_CORTO[pl] + '</label>';
       }).join('') + '</div>';
     }).join('') + '</div>' +
+      '<div class="campo"><span class="label">Grabación semanal por defecto <small>La app la propone sola cada semana</small></span><div class="fila-dos"><select name="grabacion_dia"' + (editable ? '' : ' disabled') + '>' + [1, 2, 3, 4, 5, 6, 0].map(function (i) {
+        return '<option value="' + i + '"' + (+(aj.grabacion_dia == null ? 2 : aj.grabacion_dia) === i ? ' selected' : '') + '>' + L.DIAS[i] + '</option>';
+      }).join('') + '</select><input type="time" name="grabacion_hora" value="' + esc(aj.grabacion_hora || '11:00') + '"' + (editable ? '' : ' disabled') + '></div></div>' +
       '<label class="campo">Días mínimos entre IG y TikTok para el mismo contenido<input type="number" name="dias_minimos" min="0" max="30" value="' + L.minimo(aj) + '"' + (editable ? '' : ' disabled') + '></label>' +
       (editable ? '<button class="btn" type="submit">Guardar cronograma</button>' : '<p class="ayuda">Solo quien aprueba cambia el cronograma.</p>') + '</form>');
     html += seccion('Equipo', '<div class="lista">' + S.data.equipo.map(function (e) {
@@ -821,6 +948,16 @@
       var vals = (p.fecha_ig || p.fecha_tt) ? { fecha_ig: p.fecha_ig, fecha_tt: p.fecha_tt, primero: p.primero } : L.sugerirFechas(p, piezas(), ajustes(), S.hoy, null);
       cuerpo = '<h2>Fechas</h2><p class="muted">' + esc(p.titulo) + '</p><form data-form="fechas" data-id="' + p.id + '">' + bloqueFechas(p, vals, false) +
         '<button class="btn grande" type="submit">Guardar fechas</button></form>';
+    } else if (m.tipo === 'reagendar') {
+      var g = grabacion(m.id);
+      cuerpo = '<h2>Proponer otro día</h2><p class="muted">Ahora: ' + esc(cuandoG(g)) + '. La otra persona tendrá que confirmar de nuevo.</p>' +
+        '<form data-form="reagendar" data-id="' + g.id + '"><div class="fila-dos"><label class="campo">Día<input type="date" name="fecha" required min="' + S.hoy + '" value="' + esc(g.fecha) + '"></label>' +
+        '<label class="campo">Hora<input type="time" name="hora" required value="' + esc(g.hora) + '"></label></div>' +
+        '<label class="campo">Motivo <small>(opcional)</small><input name="motivo" autocomplete="off" placeholder="Ej. llega mercancía el miércoles"></label>' +
+        '<button class="btn grande" type="submit">Proponer</button></form>';
+    } else if (m.tipo === 'no-grabo') {
+      cuerpo = '<h2>No se grabó</h2><form data-form="no-grabo" data-id="' + m.id + '"><label class="campo">¿Qué pasó?<input name="motivo" required autocomplete="off" placeholder="Ej. no llegó la mercancía"></label>' +
+        '<p class="ayuda">Queda en el historial para ver qué está fallando.</p><button class="btn grande" type="submit">Guardar</button></form>';
     } else if (m.tipo === 'hueco') {
       var h = { fecha: m.fecha, plataforma: m.plat, tipo: m.tipoPieza };
       var cands = L.candidatosHueco(piezas(), h);
@@ -986,6 +1123,37 @@
     'reabrir': function (el) {
       var p = pieza(el.dataset.id);
       accion(function () { return ejecutar(p, L.accionReabrir(p, eventos())); }, function () { S.flash = { titulo: 'Reabierta' }; });
+    },
+    'confirmar-grab': function (el) {
+      var g = grabacion(el.dataset.id), r;
+      try { r = L.accionConfirmar(g, yo().user_id, S.data.equipo); } catch (e) { return aviso(e.message); }
+      accion(function () { return ejecutarG(g, r); }, function (fila) {
+        var o = otraPersona(), completa = r.eventos[0].datos.completa;
+        S.flash = { titulo: completa ? '🎬 Grabación confirmada' : '✓ Confirmaste', texto: cuandoG(fila) + (completa ? '' : '. Falta que confirme ' + (o ? o.nombre : 'la otra persona') + '.'),
+          wa: { href: L.waLink(o && o.telefono, L.msgGrabacion(fila, completa ? 'completa' : 'confirme', base(), o && o.nombre)), label: 'Avisar a ' + (o ? o.nombre : 'la otra') + ' por WhatsApp' } };
+      });
+    },
+    'reagendar': function (el) { abrirModal({ tipo: 'reagendar', id: el.dataset.id }); },
+    'no-grabo': function (el) { abrirModal({ tipo: 'no-grabo', id: el.dataset.id }); },
+    'hecha-grab': function (el) {
+      var g = grabacion(el.dataset.id), r;
+      try { r = L.accionCerrarGrabacion(g, true); } catch (e) { return aviso(e.message); }
+      accion(function () { return ejecutarG(g, r); }, function () { S.flash = { titulo: '✅ Grabación hecha', texto: 'Marca «Grabado ✓» en cada video para que pase a edición.' }; location.hash = '#/grabacion/' + g.id; });
+    },
+    'reabrir-grab': function (el) {
+      var g = grabacion(el.dataset.id), r;
+      try { r = L.accionReabrirGrabacion(g); } catch (e) { return aviso(e.message); }
+      accion(function () { return ejecutarG(g, r); }, null);
+    },
+    'grabado': function (el) {
+      var p = pieza(el.dataset.id), r;
+      try { r = L.accionIniciar(p, {}); } catch (e) { return aviso(e.message); }
+      accion(function () { return ejecutar(p, r); }, function () { S.flash = { titulo: '🎬 Grabado', texto: '«' + p.titulo + '» pasó a edición.' }; });
+    },
+    'agregar-a-grab': function (el) {
+      var p = pieza(el.dataset.id);
+      var r = { patch: { grabacion_id: el.dataset.grab }, match: { fase: 'idea' }, eventos: [{ tipo: 'editada', texto: 'agregada a la grabación', datos: { grabacion_id: el.dataset.grab } }] };
+      accion(function () { return ejecutar(p, r); }, null);
     }
   };
   function abrirModal(m) { S.modal = m; pintarCapas(); var i = document.querySelector('.hoja input:not([type=hidden]), .hoja textarea'); if (i && m.tipo === 'espera') try { i.focus(); } catch (e) { /* nada */ } }
@@ -1191,6 +1359,31 @@
         S.flash = { titulo: '📅 «' + p.titulo + '» programada', texto: txt };
       }, btn);
     },
+    reagendar: function (f, btn) {
+      var g = grabacion(f.dataset.id), r;
+      try { r = L.accionReagendar(g, yo().user_id, val(f, 'fecha'), val(f, 'hora'), val(f, 'motivo'), S.hoy); } catch (e) { return aviso(e.message); }
+      accion(function () { return ejecutarG(g, r); }, function (fila) {
+        S.modal = null;
+        var o = otraPersona();
+        S.flash = { titulo: '🔁 Nueva propuesta', texto: cuandoG(fila) + '. Queda en el historial.',
+          wa: { href: L.waLink(o && o.telefono, L.msgGrabacion(fila, 'reagenda', base(), o && o.nombre)), label: 'Avisar a ' + (o ? o.nombre : 'la otra') + ' por WhatsApp' } };
+      }, btn);
+    },
+    'no-grabo': function (f, btn) {
+      var g = grabacion(f.dataset.id), r;
+      try { r = L.accionCerrarGrabacion(g, false, val(f, 'motivo')); } catch (e) { return aviso(e.message); }
+      accion(function () { return ejecutarG(g, r); }, function () { S.modal = null; S.flash = { titulo: 'Anotado', texto: 'La próxima semana la app vuelve a proponer la grabación.' }; }, btn);
+    },
+    'titulo-grab': function (f, btn) {
+      var r;
+      try { r = L.nuevaPieza({ titulo: val(f, 'titulo'), tipo: val(f, 'tipo'), idea: true }, { id: ST.uuid(), hoy: S.hoy }); } catch (e) { return aviso(e.message); }
+      r.fila.grabacion_id = f.dataset.id;
+      accion(function () {
+        return store.insertar('piezas', r.fila).then(function (fila) {
+          return store.insertar('eventos', Object.assign({ pieza_id: fila.id }, r.eventos[0]));
+        });
+      }, null, btn);
+    },
     ajustes: function (f, btn) {
       var cron = {};
       for (var i = 0; i < 7; i++) {
@@ -1200,7 +1393,9 @@
       }
       var dm = parseInt(val(f, 'dias_minimos'), 10);
       if (isNaN(dm) || dm < 0 || dm > 30) return aviso('Los días mínimos deben estar entre 0 y 30.');
-      accion(function () { return store.actualizar('ajustes', 1, { cronograma: cron, dias_minimos: dm }, null); }, function () { S.flash = { titulo: 'Cronograma guardado' }; }, btn);
+      var gh = val(f, 'grabacion_hora');
+      if (!L.horaValida(gh)) return aviso('Revisa la hora de grabación.');
+      accion(function () { return store.actualizar('ajustes', 1, { cronograma: cron, dias_minimos: dm, grabacion_dia: parseInt(val(f, 'grabacion_dia'), 10), grabacion_hora: gh }, null); }, function () { S.flash = { titulo: 'Cronograma guardado' }; }, btn);
     }
   };
 

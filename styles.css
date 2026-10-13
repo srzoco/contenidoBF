@@ -406,3 +406,22 @@ ol.ranking li a { flex: 1; min-width: 140px; color: var(--ink); text-decoration:
   .cron-fila { grid-template-columns: 1fr auto auto; }
   .cron-fila b { grid-column: 1 / -1; }
 }
+
+/* ---------- Grabación ---------- */
+.grabacion { border-left: 5px solid var(--accent); }
+.grabacion.urgente { border-left-color: var(--wine); background: var(--wine-bg); }
+.grabacion.hecha { border-left-color: var(--green); }
+.grabacion.cancelada { border-left-color: var(--muted); }
+.grab-cuando { font: 600 1.15rem var(--serif); margin: 2px 0 6px; }
+.grab-conf { display: flex; flex-wrap: wrap; gap: 6px 14px; font-weight: 600; font-size: .92rem; }
+.grab-conf .ok { color: var(--green); }
+.grab-conf .falta { color: var(--amber); }
+.grabacion .acciones .btn.wa { flex: 1 1 100%; }
+.agregar-titulo { display: grid; grid-template-columns: 1fr 100px auto; gap: 8px; margin-top: 12px; }
+.agregar-titulo select { width: auto; }
+.fila-dos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.racha { display: flex; gap: 6px; justify-content: space-between; }
+.racha span { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; }
+.racha small { color: var(--muted); font-size: .7rem; }
+.cal-grab { display: block; margin: 2px 0 6px; text-decoration: none; font-weight: 600; color: var(--accent); font-size: .9rem; }
+@media (max-width: 380px) { .agregar-titulo { grid-template-columns: 1fr auto; } .agregar-titulo input { grid-column: 1 / -1; } }

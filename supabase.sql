@@ -145,4 +145,54 @@ create policy eventos_ver on public.eventos for select to authenticated using (t
 drop policy if exists eventos_crear on public.eventos;
 create policy eventos_crear on public.eventos for insert to authenticated with check (autor = auth.uid());
 
+-- ---------- Grabación semanal ----------
+alter table public.ajustes add column if not exists grabacion_dia  int  not null default 2 check (grabacion_dia between 0 and 6);
+alter table public.ajustes add column if not exists grabacion_hora text not null default '11:00';
+
+create table if not exists public.grabaciones (
+  id              uuid primary key default gen_random_uuid(),
+  semana          date not null unique,              -- lunes de la semana
+  fecha           date not null,
+  hora            text not null check (hora ~ '^[0-2][0-9]:[0-5][0-9]$'),
+  estado          text not null default 'propuesta' check (estado in ('propuesta', 'confirmada', 'hecha', 'cancelada')),
+  confirmaciones  uuid[] not null default '{}',
+  nota            text,
+  creado_en       timestamptz not null default now(),
+  actualizado_en  timestamptz not null default now()
+);
+
+-- Historial de la grabación (propuestas, confirmaciones, reagendas). No se edita ni se borra.
+create table if not exists public.grabacion_eventos (
+  id             uuid primary key default gen_random_uuid(),
+  grabacion_id   uuid not null references public.grabaciones (id) on delete cascade,
+  autor          uuid not null default auth.uid(),
+  tipo           text not null check (tipo in ('auto', 'confirmacion', 'reagenda', 'hecha', 'cancelada', 'reabierta')),
+  texto          text,
+  datos          jsonb not null default '{}'::jsonb,
+  creado_en      timestamptz not null default now()
+);
+
+alter table public.piezas add column if not exists grabacion_id uuid references public.grabaciones (id) on delete set null;
+
+drop trigger if exists grabaciones_tocar on public.grabaciones;
+create trigger grabaciones_tocar before update on public.grabaciones
+  for each row execute function public.tocar_actualizado();
+
+alter table public.grabaciones       enable row level security;
+alter table public.grabacion_eventos enable row level security;
+revoke all on public.grabaciones, public.grabacion_eventos from anon, authenticated;
+grant select, insert, update on public.grabaciones       to authenticated;
+grant select, insert         on public.grabacion_eventos to authenticated;
+
+drop policy if exists grabaciones_ver on public.grabaciones;
+create policy grabaciones_ver on public.grabaciones for select to authenticated using (true);
+drop policy if exists grabaciones_crear on public.grabaciones;
+create policy grabaciones_crear on public.grabaciones for insert to authenticated with check (true);
+drop policy if exists grabaciones_editar on public.grabaciones;
+create policy grabaciones_editar on public.grabaciones for update to authenticated using (true) with check (true);
+drop policy if exists grab_eventos_ver on public.grabacion_eventos;
+create policy grab_eventos_ver on public.grabacion_eventos for select to authenticated using (true);
+drop policy if exists grab_eventos_crear on public.grabacion_eventos;
+create policy grab_eventos_crear on public.grabacion_eventos for insert to authenticated with check (autor = auth.uid());
+
 -- Listo. Siguiente paso de la guía: crear los dos usuarios en Authentication → Users.

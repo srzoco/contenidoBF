@@ -72,6 +72,13 @@ App web para aprobar videos, carruseles y copys, llevar el calendario de IG y Ti
 5. **En espera de mercancía**: la pieza no se publica hasta que marques **Llegó**.
 6. Una vez por semana, entra a **Métricas** (10 min): rondas de corrección, lo que más se corrige y qué piezas tienen más vistas. Sirve para darle feedback concreto a tu editora.
 
+**Grabación semanal (las dos)**
+- Cada semana la app propone sola la grabación (por defecto **martes 11 a. m.**, se cambia en Ajustes). Nadie tiene que acordarse de escribir.
+- Aparece arriba en **Pendientes**: cada una toca **Confirmar** o **Proponer otro día** (con motivo opcional). Si alguien reagenda, la otra tiene que confirmar de nuevo, y el cambio queda en el historial.
+- Si falta confirmar y quedan menos de 24 h, la tarjeta se pone roja.
+- En el detalle se anotan los **títulos de los videos a grabar** y se suman ideas del banco. Al grabar cada uno, se toca **Grabado ✓** y pasa a edición.
+- Después de la hora, la app pregunta **¿Se grabó?** Si no, pide el motivo. Las últimas semanas quedan a la vista (✅ / ❌).
+
 **Flujo de cada pieza**
 - **Reel:** Video → Copy y fechas → Programada → Publicada.
 - **Carrusel:** Texto → Diseño → Copy y fechas → Programada → Publicada. El texto se aprueba **antes** de diseñar, porque ahí se ahorran la mayoría de las vueltas.
@@ -80,6 +87,8 @@ App web para aprobar videos, carruseles y copys, llevar el calendario de IG y Ti
 ---
 
 ## Mantenimiento
+
+- **Si ya habías instalado la versión anterior:** vuelve a pegar y ejecutar `supabase.sql` completo en el SQL Editor (no borra nada, solo agrega lo de grabación) y reemplaza en GitHub todos los archivos menos `config.js`.
 
 - **Cronograma y regla de días:** se cambian en **Ajustes** (solo quien aprueba).
 - **Pausa del plan gratis:** si pasan varios días sin que nadie use la app, Supabase puede pausar el proyecto. Se reactiva entrando a supabase.com y tocando **Restore**. Con uso diario no pasa.

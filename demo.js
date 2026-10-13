@@ -131,7 +131,20 @@
     var p12 = pieza({ titulo: 'Vinos para diciembre', fase: 'idea', producto: 'Vinos', gancho: '3 vinos por menos de lo que crees', creado_en: ts(30) });
     ev(p12, 30, SARA, 'idea', null, null, null, { tipo: 'reel', plataformas: ['ig', 'tt'] });
 
+    // Grabaciones de semanas anteriores (para ver el historial y la racha)
+    var grabaciones = [], grabacion_eventos = [];
+    var lunes = L.lunesDe(hoy);
+    [[4, 'hecha', null], [3, 'hecha', null], [2, 'cancelada', 'No llegó la mercancía'], [1, 'hecha', null]].forEach(function (x) {
+      var sem = L.addDias(lunes, -7 * x[0]);
+      var g = { id: id(), semana: sem, fecha: L.addDias(sem, 1), hora: '11:00', estado: x[1], confirmaciones: [SARA, EDI], nota: x[2], creado_en: ts(x[0] * 7 * 24 + 24), actualizado_en: ts(x[0] * 7 * 24 - 24) };
+      grabaciones.push(g);
+      grabacion_eventos.push({ id: id(), grabacion_id: g.id, autor: SARA, tipo: 'auto', texto: null, datos: { fecha: g.fecha, hora: g.hora }, creado_en: ts(x[0] * 7 * 24 + 24) });
+      grabacion_eventos.push({ id: id(), grabacion_id: g.id, autor: EDI, tipo: x[1], texto: x[2], datos: {}, creado_en: ts(x[0] * 7 * 24 - 24) });
+    });
+    piezas.forEach(function (p) { if (p.grabacion_id === undefined) p.grabacion_id = null; });
+
     return {
+      grabaciones: grabaciones, grabacion_eventos: grabacion_eventos,
       equipo: [
         { user_id: SARA, nombre: 'Sara', rol: 'aprueba', telefono: '', creado_en: ts(500) },
         { user_id: EDI, nombre: 'Editora', rol: 'edita', telefono: '', creado_en: ts(500) }

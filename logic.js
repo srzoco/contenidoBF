@@ -28,7 +28,7 @@
     '5': { tipo: 'carrusel', plataformas: ['ig', 'tt'] },
     '6': { tipo: 'descanso', plataformas: [] }
   };
-  var AJUSTES_BASE = { id: 1, cronograma: CRONOGRAMA_BASE, dias_minimos: 3 };
+  var AJUSTES_BASE = { id: 1, cronograma: CRONOGRAMA_BASE, dias_minimos: 3, grabacion_dia: 2, grabacion_hora: '11:00' };
 
   var CHIPS = {
     video: ['Cortar inicio', 'Más corto', 'Ritmo / cortes', 'Texto en pantalla', 'Subtítulos', 'Música / audio', 'Color / luz', 'Logo / marca', 'Precio / dato', 'Portada'],
@@ -537,9 +537,10 @@
     });
     r.publicar.sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0; });
     r.huecos = huecos(piezas, ajustes, hoy, 7);
-    r.total = rol === 'aprueba'
+    r.totalBase = rol === 'aprueba'
       ? r.revisar.length
       : r.corregir.length + r.editar.length + r.publicar.length + r.vistas.length;
+    r.total = r.totalBase;
     return r;
   }
   function minFecha(p) {
@@ -695,6 +696,91 @@
     };
   }
 
+  // ---------- Grabación semanal ----------
+  function lunesDe(iso) { var w = diaSemana(iso); return addDias(iso, w === 0 ? -6 : 1 - w); }
+  function horaValida(h) { return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(h || '')); }
+  function momento(fecha, hora) { var p = partes(fecha), h = String(hora || '00:00').split(':'); return new Date(p[0], p[1] - 1, p[2], +h[0], +h[1]).getTime(); }
+  function fmtHora(h) {
+    if (!horaValida(h)) return h || '';
+    var x = h.split(':'), n = +x[0];
+    return (n % 12 === 0 ? 12 : n % 12) + (x[1] === '00' ? '' : ':' + x[1]) + (n < 12 ? ' a. m.' : ' p. m.');
+  }
+  // Propuesta automática de la semana: el día/hora de Ajustes; si ya pasó, el día siguiente a la misma hora (dentro de la semana).
+  function grabacionPorDefecto(ajustes, ahora) {
+    ahora = ahora || new Date();
+    var hoy = hoyISO(ahora), lunes = lunesDe(hoy);
+    var dia = ajustes && ajustes.grabacion_dia != null ? +ajustes.grabacion_dia : 2;
+    var hora = ajustes && horaValida(ajustes.grabacion_hora) ? ajustes.grabacion_hora : '11:00';
+    var fecha = addDias(lunes, (dia + 6) % 7);
+    if (momento(fecha, hora) < ahora.getTime()) {
+      fecha = addDias(hoy, 1);
+      if (fecha >= addDias(lunes, 7)) fecha = addDias(hoy, 1); // la semana se acabó: se propone mañana igual
+    }
+    return { semana: lunes, fecha: fecha, hora: hora, estado: 'propuesta', confirmaciones: [] };
+  }
+  function grabacionDeSemana(grabaciones, hoy) {
+    var l = lunesDe(hoy || hoyISO());
+    return (grabaciones || []).filter(function (g) { return g.semana === l; })[0] || null;
+  }
+  function estadoGrabacion(g, equipo, ahora) {
+    ahora = ahora || new Date();
+    var ids = (equipo || []).map(function (e) { return e.user_id; });
+    var conf = (g.confirmaciones || []).filter(function (id) { return ids.indexOf(id) >= 0; });
+    var faltan = ids.filter(function (id) { return conf.indexOf(id) < 0; });
+    var t = momento(g.fecha, g.hora), ms = t - ahora.getTime();
+    var abierta = g.estado === 'propuesta' || g.estado === 'confirmada';
+    return {
+      confirmados: conf, faltan: faltan, completa: faltan.length === 0 && ids.length > 0,
+      pasada: abierta && ms < -60 * 60000,                 // pasó hace más de 1 h: preguntar si se grabó
+      urgente: g.estado === 'propuesta' && faltan.length > 0 && ms < 24 * 3600000,
+      abierta: abierta
+    };
+  }
+  function errG(m) { var e = new Error(m); e.usuario = true; return e; }
+  function accionConfirmar(g, userId, equipo) {
+    if (g.estado !== 'propuesta' && g.estado !== 'confirmada') throw errG('Esta grabación ya se cerró.');
+    if ((g.confirmaciones || []).indexOf(userId) >= 0) throw errG('Ya la confirmaste.');
+    var conf = (g.confirmaciones || []).concat([userId]);
+    var completa = estadoGrabacion({ fecha: g.fecha, hora: g.hora, estado: g.estado, confirmaciones: conf }, equipo).completa;
+    return { patch: { confirmaciones: conf, estado: completa ? 'confirmada' : 'propuesta' }, match: { fecha: g.fecha, hora: g.hora, estado: g.estado },
+      eventos: [{ tipo: 'confirmacion', texto: null, datos: { fecha: g.fecha, hora: g.hora, completa: completa } }] };
+  }
+  function accionReagendar(g, userId, fecha, hora, motivo, hoy) {
+    if (g.estado !== 'propuesta' && g.estado !== 'confirmada') throw errG('Esta grabación ya se cerró.');
+    if (!fecha) throw errG('Elige el día.');
+    if (!horaValida(hora)) throw errG('Elige la hora.');
+    if (hoy && fecha < hoy) throw errG('Ese día ya pasó.');
+    if (fecha === g.fecha && hora === g.hora) throw errG('Es el mismo día y hora de ahora.');
+    return { patch: { fecha: fecha, hora: hora, confirmaciones: [userId], estado: 'propuesta' }, match: { fecha: g.fecha, hora: g.hora, estado: g.estado },
+      eventos: [{ tipo: 'reagenda', texto: limpiar(motivo), datos: { antes: { fecha: g.fecha, hora: g.hora }, despues: { fecha: fecha, hora: hora } } }] };
+  }
+  function accionCerrarGrabacion(g, hecha, motivo) {
+    if (g.estado !== 'propuesta' && g.estado !== 'confirmada') throw errG('Esta grabación ya se cerró.');
+    if (!hecha && !txt(motivo)) throw errG('Cuenta brevemente por qué no se grabó.');
+    return { patch: { estado: hecha ? 'hecha' : 'cancelada', nota: limpiar(motivo) }, match: { estado: g.estado },
+      eventos: [{ tipo: hecha ? 'hecha' : 'cancelada', texto: limpiar(motivo), datos: {} }] };
+  }
+  function accionReabrirGrabacion(g) {
+    if (g.estado !== 'hecha' && g.estado !== 'cancelada') throw errG('No está cerrada.');
+    return { patch: { estado: 'propuesta', confirmaciones: [], nota: null }, match: { estado: g.estado }, eventos: [{ tipo: 'reabierta', texto: null, datos: {} }] };
+  }
+  function racha(grabaciones, hoy, semanas) {
+    var l = lunesDe(hoy || hoyISO()), r = [];
+    for (var i = semanas; i >= 1; i--) {
+      var s = addDias(l, -7 * i);
+      var g = (grabaciones || []).filter(function (x) { return x.semana === s; })[0];
+      r.push({ semana: s, estado: g ? g.estado : 'sin' });
+    }
+    return r;
+  }
+  function msgGrabacion(g, tipo, base, nombre) {
+    var cuando = fmtFechaLarga(g.fecha) + ' a las ' + fmtHora(g.hora);
+    var link = String(base || '').replace(/#.*$/, '') + '#/grabacion/' + g.id;
+    if (tipo === 'completa') return '🎬 Confirmada la grabación: ' + cuando + '. ' + link;
+    if (tipo === 'reagenda') return '🎬 ' + (nombre ? nombre + ', ' : '') + 'reagendé la grabación para el ' + cuando + '. ¿Te sirve? Confírmala o propón otra hora en la app: ' + link;
+    return '🎬 ' + (nombre ? nombre + ', ' : '') + 'yo confirmé la grabación del ' + cuando + '. Falta que la confirmes tú: ' + link;
+  }
+
   // ---------- WhatsApp ----------
   function normalizarTelefono(t) {
     var d = String(t || '').replace(/\D/g, '');
@@ -757,6 +843,9 @@
     pendientes: pendientes, esperasPorProducto: esperasPorProducto,
     eventosDe: eventosDe, rondasDe: rondasDe, ultimaCorreccion: ultimaCorreccion, ultimoEnvio: ultimoEnvio, metricas: metricas,
     normalizarTelefono: normalizarTelefono, waLink: waLink, enlacePieza: enlacePieza, nombreEtapa: nombreEtapa,
-    msgEnvio: msgEnvio, msgCorreccion: msgCorreccion, msgAprobacion: msgAprobacion, msgResumenLote: msgResumenLote
+    msgEnvio: msgEnvio, msgCorreccion: msgCorreccion, msgAprobacion: msgAprobacion, msgResumenLote: msgResumenLote,
+    lunesDe: lunesDe, horaValida: horaValida, momento: momento, fmtHora: fmtHora, grabacionPorDefecto: grabacionPorDefecto, grabacionDeSemana: grabacionDeSemana,
+    estadoGrabacion: estadoGrabacion, accionConfirmar: accionConfirmar, accionReagendar: accionReagendar, accionCerrarGrabacion: accionCerrarGrabacion,
+    accionReabrirGrabacion: accionReabrirGrabacion, racha: racha, msgGrabacion: msgGrabacion
   };
 });

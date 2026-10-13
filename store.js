@@ -53,6 +53,7 @@
     this.semilla = semilla;
     this.db = LS.get(this.clave);
     if (!this.db || !this.db.piezas) { this.db = semilla(); this._guardar(); }
+    if (!this.db.grabaciones) { var s = semilla(); this.db.grabaciones = s.grabaciones || []; this.db.grabacion_eventos = s.grabacion_eventos || []; Object.assign(this.db.ajustes, { grabacion_dia: 2, grabacion_hora: '11:00' }, this.db.ajustes); this._guardar(); }
     var u = LS.get('bfcontenido_demo_usuario');
     this.usuarioId = (u && this.db.equipo.some(function (e) { return e.user_id === u; })) ? u : this.db.equipo[0].user_id;
   }
@@ -70,7 +71,8 @@
     var db = copia(this.db);
     db.piezas.sort(function (a, b) { return a.creado_en < b.creado_en ? 1 : -1; });
     db.eventos.sort(function (a, b) { return a.creado_en < b.creado_en ? -1 : 1; });
-    return Promise.resolve({ equipo: db.equipo, ajustes: db.ajustes, piezas: db.piezas, eventos: db.eventos });
+    db.grabacion_eventos.sort(function (a, b) { return a.creado_en < b.creado_en ? -1 : 1; });
+    return Promise.resolve({ equipo: db.equipo, ajustes: db.ajustes, piezas: db.piezas, eventos: db.eventos, grabaciones: db.grabaciones, grabacion_eventos: db.grabacion_eventos });
   };
   DemoStore.prototype.insertar = function (tabla, fila) {
     var ahora = new Date().toISOString();
@@ -83,7 +85,11 @@
       f.id = f.id || uuid();
       f.creado_en = f.creado_en || ahora;
       if (tabla === 'piezas') { f.actualizado_en = ahora; f.creado_por = f.creado_por || this.usuarioId; }
-      if (tabla === 'eventos') { f.autor = this.usuarioId; f.datos = f.datos || {}; }
+      if (tabla === 'eventos' || tabla === 'grabacion_eventos') { f.autor = this.usuarioId; f.datos = f.datos || {}; }
+      if (tabla === 'grabaciones') {
+        if (this.db.grabaciones.some(function (g) { return g.semana === f.semana; })) return Promise.reject(errorUsuario('No se pudo guardar: duplicate key value violates unique constraint "grabaciones_semana_key"'));
+        f.actualizado_en = ahora; f.confirmaciones = f.confirmaciones || []; f.estado = f.estado || 'propuesta';
+      }
       this.db[tabla].push(f);
     }
     this._guardar();
@@ -94,7 +100,7 @@
     var fila = (this.db[tabla] instanceof Array ? this.db[tabla] : [this.db[tabla]]).filter(function (r) { return r[clave] === id; })[0];
     if (!fila || !coincide(fila, match)) return Promise.resolve(null);
     Object.assign(fila, patch);
-    if (tabla === 'piezas' || tabla === 'ajustes') fila.actualizado_en = new Date().toISOString();
+    if (tabla === 'piezas' || tabla === 'ajustes' || tabla === 'grabaciones') fila.actualizado_en = new Date().toISOString();
     this._guardar();
     return Promise.resolve(copia(fila));
   };
@@ -209,9 +215,11 @@
       self._rest('GET', 'equipo?select=*'),
       self._rest('GET', 'ajustes?select=*'),
       self._rest('GET', 'piezas?select=*&order=creado_en.desc'),
-      self._rest('GET', 'eventos?select=*&order=creado_en.asc')
+      self._rest('GET', 'eventos?select=*&order=creado_en.asc'),
+      self._rest('GET', 'grabaciones?select=*&order=semana.desc'),
+      self._rest('GET', 'grabacion_eventos?select=*&order=creado_en.asc')
     ]).then(function (r) {
-      return { equipo: r[0] || [], ajustes: (r[1] && r[1][0]) || null, piezas: r[2] || [], eventos: r[3] || [] };
+      return { equipo: r[0] || [], ajustes: (r[1] && r[1][0]) || null, piezas: r[2] || [], eventos: r[3] || [], grabaciones: r[4] || [], grabacion_eventos: r[5] || [] };
     });
   };
   SupabaseStore.prototype.insertar = function (tabla, fila) {
