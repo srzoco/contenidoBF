@@ -23,13 +23,8 @@ create table if not exists public.ajustes (
 
 insert into public.ajustes (id, cronograma, dias_minimos)
 values (1, '{
-  "0": {"tipo": "reel",      "plataformas": ["ig", "tt"]},
-  "1": {"tipo": "carrusel",  "plataformas": ["ig", "tt"]},
-  "2": {"tipo": "reel",      "plataformas": ["ig", "tt"]},
-  "3": {"tipo": "historias", "plataformas": []},
-  "4": {"tipo": "reel",      "plataformas": ["ig", "tt"]},
-  "5": {"tipo": "carrusel",  "plataformas": ["ig", "tt"]},
-  "6": {"tipo": "descanso",  "plataformas": []}
+  "ig": {"0": "reel", "1": "carrusel", "2": "reel", "3": "historias", "4": "reel", "5": "carrusel", "6": "descanso"},
+  "tt": {"0": "cualquiera", "1": "cualquiera", "2": "cualquiera", "3": "cualquiera", "4": "cualquiera", "5": "cualquiera", "6": "cualquiera"}
 }'::jsonb, 3)
 on conflict (id) do nothing;
 

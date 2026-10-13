@@ -361,7 +361,8 @@ ol.ranking li a { flex: 1; min-width: 140px; color: var(--ink); text-decoration:
 
 /* ---------- Ajustes ---------- */
 .cron { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
-.cron-fila { display: grid; grid-template-columns: 92px 1fr auto auto; gap: 8px; align-items: center; }
+.cron-fila { display: grid; grid-template-columns: 84px 1fr 1fr; gap: 8px; align-items: center; }
+.cron-head b { font-size: .82rem; color: var(--muted); }
 .cron-fila select { min-height: 40px; padding: 6px 8px; }
 .version { text-align: center; margin-top: 24px; }
 
@@ -403,8 +404,7 @@ ol.ranking li a { flex: 1; min-width: 140px; color: var(--ink); text-decoration:
 @media (max-width: 380px) {
   .hero { flex-direction: column; align-items: stretch; text-align: center; }
   .hero .btn.grande { width: 100%; }
-  .cron-fila { grid-template-columns: 1fr auto auto; }
-  .cron-fila b { grid-column: 1 / -1; }
+  .cron-fila { grid-template-columns: 70px 1fr 1fr; }
 }
 
 /* ---------- Grabación ---------- */

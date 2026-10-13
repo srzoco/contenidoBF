@@ -67,7 +67,7 @@ App web para aprobar videos, carruseles y copys, llevar el calendario de IG y Ti
 **Sara**
 1. **Pendientes → Revisar todo**: pasas por todas las piezas seguidas con **Aprobar** o **Corregir** (con botones rápidos y el minuto exacto). Al final, un solo WhatsApp con el resumen.
 2. En el copy puedes arreglar un detalle tú misma y aprobar, sin devolverlo.
-3. Las fechas se sugieren solas: el día que toca en el cronograma y **mínimo 3 días** entre IG y TikTok. Tú decides cuál plataforma va primero.
+3. Las fechas se sugieren solas según el cronograma de cada plataforma (**Instagram:** dom reel · lun carrusel · mar reel · mié solo historias · jue reel · vie carrusel · sáb nada. **TikTok:** todos los días, reel o carrusel) y con **mínimo 3 días** entre IG y TikTok para el mismo contenido. Tú decides cuál plataforma va primero. Al publicar en TikTok, la lista recuerda compartirlo también en historias.
 4. **Huecos**: si un día del cronograma no tiene pieza, la app te avisa y te deja llenarlo con algo del **banco** (piezas aprobadas sin fecha). Ese banco es lo que te cubre los días que no puedes revisar.
 5. **En espera de mercancía**: la pieza no se publica hasta que marques **Llegó**.
 6. Una vez por semana, entra a **Métricas** (10 min): rondas de corrección, lo que más se corrige y qué piezas tienen más vistas. Sirve para darle feedback concreto a tu editora.
@@ -88,7 +88,7 @@ App web para aprobar videos, carruseles y copys, llevar el calendario de IG y Ti
 
 ## Mantenimiento
 
-- **Si ya habías instalado la versión anterior:** vuelve a pegar y ejecutar `supabase.sql` completo en el SQL Editor (no borra nada, solo agrega lo de grabación) y reemplaza en GitHub todos los archivos menos `config.js`.
+- **Si ya habías instalado la versión anterior:** vuelve a pegar y ejecutar `supabase.sql` completo en el SQL Editor (no borra nada, solo agrega lo de grabación) y reemplaza en GitHub todos los archivos menos `config.js`. Luego entra a **Ajustes → Cronograma** y toca **Guardar** para dejar el cronograma nuevo (IG y TikTok por separado).
 
 - **Cronograma y regla de días:** se cambian en **Ajustes** (solo quien aprueba).
 - **Pausa del plan gratis:** si pasan varios días sin que nadie use la app, Supabase puede pausar el proyecto. Se reactiva entrando a supabase.com y tocando **Restore**. Con uso diario no pasa.

@@ -13,20 +13,17 @@
   var TIPOS = { reel: 'Reel', carrusel: 'Carrusel' };
   var ETAPAS = { reel: ['video', 'copy'], carrusel: ['texto', 'diseno', 'copy'] };
   var ETAPA_LABEL = { video: 'Video', texto: 'Texto del carrusel', diseno: 'Diseño', copy: 'Copy y fechas' };
-  var TIPO_DIA = { reel: 'Reel', carrusel: 'Carrusel', historias: 'Solo historias', descanso: 'Descanso' };
+  var TIPO_DIA = { reel: 'Reel', carrusel: 'Carrusel', cualquiera: 'Reel o carrusel', historias: 'Solo historias', descanso: 'Descanso' };
   var DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
   var DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
   var MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   var MESES_LARGOS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
+  // Cronograma por plataforma: tipo de pieza que toca cada día (0 = domingo).
+  // 'cualquiera' = reel o carrusel; 'historias' y 'descanso' = no se publica pieza en el feed.
   var CRONOGRAMA_BASE = {
-    '0': { tipo: 'reel', plataformas: ['ig', 'tt'] },
-    '1': { tipo: 'carrusel', plataformas: ['ig', 'tt'] },
-    '2': { tipo: 'reel', plataformas: ['ig', 'tt'] },
-    '3': { tipo: 'historias', plataformas: [] },
-    '4': { tipo: 'reel', plataformas: ['ig', 'tt'] },
-    '5': { tipo: 'carrusel', plataformas: ['ig', 'tt'] },
-    '6': { tipo: 'descanso', plataformas: [] }
+    ig: { '0': 'reel', '1': 'carrusel', '2': 'reel', '3': 'historias', '4': 'reel', '5': 'carrusel', '6': 'descanso' },
+    tt: { '0': 'cualquiera', '1': 'cualquiera', '2': 'cualquiera', '3': 'cualquiera', '4': 'cualquiera', '5': 'cualquiera', '6': 'cualquiera' }
   };
   var AJUSTES_BASE = { id: 1, cronograma: CRONOGRAMA_BASE, dias_minimos: 3, grabacion_dia: 2, grabacion_hora: '11:00' };
 
@@ -41,6 +38,7 @@
 
   var OBJETIVOS = ['Vender un producto', 'Educar / dar a conocer', 'Confianza para comprar en la web', 'Temporada / fecha especial', 'Marca / entretener'];
 
+  function checklistDe(plat) { return plat === 'tt' ? CHECKLIST_PUBLICAR.concat(['Compartido también en historias']) : CHECKLIST_PUBLICAR; }
   var CHECKLIST_PUBLICAR = [
     'Archivo final sin marca de agua de otra app',
     'Portada elegida',
@@ -95,8 +93,22 @@
   function etapasDe(p) { return ETAPAS[p.tipo] || ETAPAS.reel; }
   // ¿Ocupa un espacio del calendario?
   function ocupa(p) { return p.fase !== 'archivada' && p.fase !== 'idea' && !p.en_espera; }
-  function cron(ajustes) { return (ajustes && ajustes.cronograma) || CRONOGRAMA_BASE; }
-  function diaCfg(ajustes, iso) { return cron(ajustes)[String(diaSemana(iso))] || { tipo: 'descanso', plataformas: [] }; }
+  // Acepta también el formato viejo ({ "0": {tipo, plataformas} }): IG sale de ahí y TikTok queda todos los días.
+  function cron(ajustes) {
+    var c = (ajustes && ajustes.cronograma) || CRONOGRAMA_BASE;
+    if (c.ig && c.tt) return c;
+    var ig = {}, tt = {};
+    for (var i = 0; i < 7; i++) {
+      var d = c[String(i)] || {};
+      ig[i] = (d.plataformas || []).indexOf('ig') >= 0 || d.tipo === 'historias' || d.tipo === 'descanso' ? (d.tipo || 'descanso') : 'descanso';
+      tt[i] = 'cualquiera';
+    }
+    return { ig: ig, tt: tt };
+  }
+  function slotTipo(ajustes, plat, iso) { return cron(ajustes)[plat][String(diaSemana(iso))] || 'descanso'; }
+  function publicable(t) { return t === 'reel' || t === 'carrusel' || t === 'cualquiera'; }
+  function cabe(ajustes, plat, iso, tipo) { var t = slotTipo(ajustes, plat, iso); return t === tipo || (t === 'cualquiera' && !!tipo); }
+  function diaCfg(ajustes, iso) { return { tipo: slotTipo(ajustes, 'ig', iso) }; } // tipo del día en Instagram (para mostrar)
   function minimo(ajustes) { var m = ajustes && ajustes.dias_minimos; return (m == null || isNaN(m)) ? 3 : +m; }
   function enBanco(p) {
     return p.fase === 'aprobada' && !p.en_espera &&
@@ -141,8 +153,7 @@
     limite = limite || 120;
     for (var i = 0; i < limite; i++) {
       var d = addDias(desde, i);
-      var c = diaCfg(ajustes, d);
-      if (c.tipo === tipo && (c.plataformas || []).indexOf(plat) >= 0 && !ocupado(piezas, plat, d, excluirId)) return d;
+      if (cabe(ajustes, plat, d, tipo) && !ocupado(piezas, plat, d, excluirId)) return d;
     }
     return null;
   }
@@ -187,13 +198,11 @@
     plataformasDe(p).forEach(function (pl) {
       var f = fechas['fecha_' + pl];
       if (!f || publicadoEn(p, pl)) return;
-      var c = diaCfg(ajustes, f);
+      var st = slotTipo(ajustes, pl, f);
       var nombreDia = DIAS[diaSemana(f)];
       if (hoy && f < hoy) avisos.push(PLAT_CORTO[pl] + ': la fecha ya pasó.');
-      if (c.tipo !== p.tipo) {
-        avisos.push(PLAT_CORTO[pl] + ': el ' + nombreDia.toLowerCase() + ' es día de ' + TIPO_DIA[c.tipo].toLowerCase() + ' en el cronograma.');
-      } else if ((c.plataformas || []).indexOf(pl) < 0) {
-        avisos.push(PLAT_CORTO[pl] + ': el cronograma no tiene ' + PLATAFORMAS[pl] + ' el ' + nombreDia.toLowerCase() + '.');
+      if (!cabe(ajustes, pl, f, p.tipo)) {
+        avisos.push(PLAT_CORTO[pl] + ': el ' + nombreDia.toLowerCase() + ' es día de ' + TIPO_DIA[st].toLowerCase() + ' en ' + PLATAFORMAS[pl] + '.');
       }
       var otra = piezas.filter(function (q) { return q.id !== p.id && ocupa(q) && q[pl] && fechaDe(q, pl) === f; })[0];
       if (otra) avisos.push(PLAT_CORTO[pl] + ': ese día ya está «' + otra.titulo + '».');
@@ -214,10 +223,9 @@
     var res = [];
     for (var i = 0; i < dias; i++) {
       var d = addDias(desde, i);
-      var c = diaCfg(ajustes, d);
-      if (c.tipo !== 'reel' && c.tipo !== 'carrusel') continue;
-      (c.plataformas || []).forEach(function (pl) {
-        if (!ocupado(piezas, pl, d, null)) res.push({ fecha: d, plataforma: pl, tipo: c.tipo });
+      ['ig', 'tt'].forEach(function (pl) {
+        var t = slotTipo(ajustes, pl, d);
+        if (publicable(t) && !ocupado(piezas, pl, d, null)) res.push({ fecha: d, plataforma: pl, tipo: t });
       });
     }
     return res;
@@ -226,7 +234,7 @@
   // Piezas del banco que sirven para un hueco
   function candidatosHueco(piezas, hueco) {
     return piezas.filter(function (p) {
-      return p.fase === 'aprobada' && !p.en_espera && p.tipo === hueco.tipo && p[hueco.plataforma] &&
+      return p.fase === 'aprobada' && !p.en_espera && (p.tipo === hueco.tipo || hueco.tipo === 'cualquiera') && p[hueco.plataforma] &&
         !publicadoEn(p, hueco.plataforma) && !fechaDe(p, hueco.plataforma);
     });
   }
@@ -405,7 +413,7 @@
     if (publicadoEn(p, plat)) throw err('Ya estaba marcada como publicada en ' + PLATAFORMAS[plat] + '.');
     datos = datos || {};
     var marcados = datos.checklist || [];
-    if (marcados.length < CHECKLIST_PUBLICAR.length) throw err('Completa la lista antes de publicar.');
+    if (marcados.length < checklistDe(plat).length) throw err('Completa la lista antes de publicar.');
     var ts = ahora || new Date().toISOString();
     var patch = {};
     patch['publicado_' + plat + '_en'] = ts;
@@ -655,9 +663,8 @@
     var slots = 0, llenos = 0;
     for (var i = dias; i >= 1; i--) {
       var d = addDias(hoy, -i);
-      var c = diaCfg(ajustes, d);
-      if (c.tipo !== 'reel' && c.tipo !== 'carrusel') continue;
-      (c.plataformas || []).forEach(function (pl) {
+      ['ig', 'tt'].forEach(function (pl) {
+        if (!publicable(slotTipo(ajustes, pl, d))) return;
         slots++;
         var ok = piezas.some(function (p) { return p[pl] && fechaDe(p, pl) === d && publicadoEn(p, pl); });
         if (ok) llenos++;
@@ -833,7 +840,7 @@
     hoyISO: hoyISO, addDias: addDias, diaSemana: diaSemana, diffDias: diffDias, fmtFecha: fmtFecha, fmtFechaLarga: fmtFechaLarga,
     horasEntre: horasEntre, haceCuanto: haceCuanto, fmtHoras: fmtHoras,
     plataformasDe: plataformasDe, fechaDe: fechaDe, publicadoEn: publicadoEn, pendientesDePublicar: pendientesDePublicar,
-    etapasDe: etapasDe, ocupa: ocupa, diaCfg: diaCfg, minimo: minimo, enBanco: enBanco, estadoDe: estadoDe,
+    etapasDe: etapasDe, ocupa: ocupa, diaCfg: diaCfg, cron: cron, slotTipo: slotTipo, publicable: publicable, cabe: cabe, checklistDe: checklistDe, minimo: minimo, enBanco: enBanco, estadoDe: estadoDe,
     ocupado: ocupado, slotLibre: slotLibre, sugerirFechas: sugerirFechas, validarFechas: validarFechas,
     huecos: huecos, candidatosHueco: candidatosHueco,
     nuevaPieza: nuevaPieza, accionEnviar: accionEnviar, accionAprobar: accionAprobar, accionCorregir: accionCorregir,

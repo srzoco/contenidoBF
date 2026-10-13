@@ -236,7 +236,7 @@
     var mostrar = hs.slice(0, max || 6);
     return '<div class="lista">' + mostrar.map(function (h) {
       return '<div class="item hueco-item"><span class="hueco-dot"></span><span class="item-cuerpo"><span class="item-titulo">' + esc(L.fmtFecha(h.fecha)) + ' · ' + L.PLATAFORMAS[h.plataforma] + '</span>' +
-        '<span class="item-meta"><span class="muted">' + L.TIPOS[h.tipo] + ' sin pieza</span></span></span>' +
+        '<span class="item-meta"><span class="muted">' + L.TIPO_DIA[h.tipo] + ' sin pieza</span></span></span>' +
         '<button class="btn chico" data-act="hueco" data-fecha="' + h.fecha + '" data-plat="' + h.plataforma + '" data-tipo="' + h.tipo + '">Llenar</button></div>';
     }).join('') + '</div>' + (hs.length > mostrar.length ? '<a class="ver-mas" href="#/calendario">Ver ' + (hs.length - mostrar.length) + ' más en el calendario ›</a>' : '');
   }
@@ -253,7 +253,7 @@
 
   function vistaPendientes() {
     var r = L.pendientes(piezas(), eventos(), rol(), S.hoy, ajustes());
-    var html = '<h1 class="saludo">' + saludo() + ', ' + esc(yo().nombre) + '</h1><p class="fecha-hoy">' + L.fmtFechaLarga(S.hoy) + ' · ' + L.TIPO_DIA[L.diaCfg(ajustes(), S.hoy).tipo] + '</p>';
+    var html = '<h1 class="saludo">' + saludo() + ', ' + esc(yo().nombre) + '</h1><p class="fecha-hoy">' + L.fmtFechaLarga(S.hoy) + ' · IG: ' + L.TIPO_DIA[L.slotTipo(ajustes(), 'ig', S.hoy)].toLowerCase() + ' · TikTok: ' + L.TIPO_DIA[L.slotTipo(ajustes(), 'tt', S.hoy)].toLowerCase() + '</p>';
     html += tarjetaGrabacion(grabSemana(), true);
     if (rol() === 'aprueba') {
       if (r.revisar.length) {
@@ -389,7 +389,7 @@
       '<div class="fechas-acc"><button type="button" class="btn link" data-act="sugerir">↻ Sugerir fechas</button>' +
       '<label class="check"><input type="checkbox" name="banco" data-banco' + (banco ? ' checked' : '') + '> Sin fecha: guardar en el banco</label></div>' +
       '<ul class="avisos" data-avisos></ul>' +
-      '<p class="ayuda">Mínimo ' + L.minimo(ajustes()) + ' días entre IG y TikTok, en días de ' + L.TIPOS[p.tipo].toLowerCase() + ' del cronograma.</p></fieldset>';
+      '<p class="ayuda">Mínimo ' + L.minimo(ajustes()) + ' días entre IG y TikTok, en días que toquen según el cronograma de cada plataforma.</p></fieldset>';
     return html;
   }
   function formCorregir(p, abierto) {
@@ -808,10 +808,9 @@
       '<a class="btn sec chico" href="#/calendario?d=' + (off + 14) + '">Después ›</a></div><div class="cal">';
     dias.forEach(function (d) {
       var c = L.diaCfg(ajustes(), d);
-      var esSlot = c.tipo === 'reel' || c.tipo === 'carrusel';
       var filas = ['ig', 'tt'].map(function (pl) {
         var en = piezas().filter(function (p) { return p[pl] && L.fechaDe(p, pl) === d && p.fase !== 'archivada' && p.fase !== 'idea' && !p.en_espera; });
-        var slot = esSlot && (c.plataformas || []).indexOf(pl) >= 0;
+        var st = L.slotTipo(ajustes(), pl, d), slot = L.publicable(st);
         if (!en.length && !slot) return '';
         var cont = en.map(function (p) {
           var pub = L.publicadoEn(p, pl);
@@ -820,7 +819,7 @@
           return '<a class="cal-pieza' + (p.fase === 'produccion' ? ' propuesta' : '') + '" href="#/p/' + p.id + '" title="' + titulo + '">' + ic + ' ' + esc(p.titulo) + '</a>';
         }).join('');
         if (!en.length) {
-          cont = d >= S.hoy ? '<button class="cal-hueco" data-act="hueco" data-fecha="' + d + '" data-plat="' + pl + '" data-tipo="' + c.tipo + '">Hueco · llenar</button>' : '<span class="cal-vacio">Sin publicación</span>';
+          cont = d >= S.hoy ? '<button class="cal-hueco" data-act="hueco" data-fecha="' + d + '" data-plat="' + pl + '" data-tipo="' + st + '">Hueco · llenar</button>' : '<span class="cal-vacio">Sin publicación</span>';
         }
         return '<div class="cal-fila"><span class="plat ' + pl + '">' + L.PLAT_CORTO[pl] + '</span><div class="cal-items">' + cont + '</div></div>';
       }).join('');
@@ -830,7 +829,7 @@
         return '<a class="cal-grab" href="#/grabacion/' + g.id + '">🎬 Grabación ' + L.fmtHora(g.hora) + ' ' + ok + '</a>';
       }).join('');
       html += '<div class="cal-dia' + (d === S.hoy ? ' hoy' : '') + (d < S.hoy ? ' pasado' : '') + ' t-' + c.tipo + '">' +
-        '<div class="cal-dia-head"><b>' + L.fmtFecha(d) + '</b><span>' + L.TIPO_DIA[c.tipo] + '</span></div>' + filaG +
+        '<div class="cal-dia-head"><b>' + L.fmtFecha(d) + '</b><span>IG: ' + L.TIPO_DIA[c.tipo].toLowerCase() + '</span></div>' + filaG +
         (filas || '<p class="cal-libre">' + (c.tipo === 'historias' ? 'Día de historias' : 'Día libre') + '</p>') + '</div>';
     });
     return html + '</div><p class="ayuda leyenda">✅ publicado · ⏰ programado · 📝 fecha propuesta (falta aprobar) · ⚠️ pasó sin marcar</p>';
@@ -883,12 +882,12 @@
     var aj = ajustes();
     var editable = rol() === 'aprueba';
     var html = '<h1>Ajustes</h1>' + seccion('Tu perfil', formPerfil(yo()));
-    html += seccion('Cronograma', '<form data-form="ajustes" class="card"><div class="cron">' + [0, 1, 2, 3, 4, 5, 6].map(function (i) {
-      var c = aj.cronograma[String(i)] || { tipo: 'descanso', plataformas: [] };
-      return '<div class="cron-fila"><b>' + L.DIAS[i] + '</b><select name="tipo_' + i + '"' + (editable ? '' : ' disabled') + '>' + Object.keys(L.TIPO_DIA).map(function (t) {
-        return '<option value="' + t + '"' + (c.tipo === t ? ' selected' : '') + '>' + L.TIPO_DIA[t] + '</option>';
-      }).join('') + '</select>' + ['ig', 'tt'].map(function (pl) {
-        return '<label class="check mini"><input type="checkbox" name="plat_' + i + '_' + pl + '"' + ((c.plataformas || []).indexOf(pl) >= 0 ? ' checked' : '') + (editable ? '' : ' disabled') + '> ' + L.PLAT_CORTO[pl] + '</label>';
+    var cr = L.cron(aj);
+    html += seccion('Cronograma', '<form data-form="ajustes" class="card"><div class="cron"><div class="cron-fila cron-head"><span></span><b>Instagram</b><b>TikTok</b></div>' + [1, 2, 3, 4, 5, 6, 0].map(function (i) {
+      return '<div class="cron-fila"><b>' + L.DIAS[i] + '</b>' + ['ig', 'tt'].map(function (pl) {
+        return '<select name="' + pl + '_' + i + '" aria-label="' + L.PLATAFORMAS[pl] + ' ' + L.DIAS[i] + '"' + (editable ? '' : ' disabled') + '>' + Object.keys(L.TIPO_DIA).map(function (t) {
+          return '<option value="' + t + '"' + (cr[pl][String(i)] === t ? ' selected' : '') + '>' + L.TIPO_DIA[t] + '</option>';
+        }).join('') + '</select>';
       }).join('') + '</div>';
     }).join('') + '</div>' +
       '<div class="campo"><span class="label">Grabación semanal por defecto <small>La app la propone sola cada semana</small></span><div class="fila-dos"><select name="grabacion_dia"' + (editable ? '' : ' disabled') + '>' + [1, 2, 3, 4, 5, 6, 0].map(function (i) {
@@ -928,7 +927,7 @@
       cuerpo = '<h2>Publicar en ' + L.PLATAFORMAS[m.plat] + '</h2><p class="muted">' + esc(p.titulo) + '</p>' +
         (copy ? '<div class="copy-box"><div class="texto-largo">' + nl2br(copy) + '</div><button type="button" class="btn sec chico" data-act="copiar" data-id="' + p.id + '" data-campo="copy_' + m.plat + '">Copiar copy</button></div>' : '<p class="rojo">Esta pieza no tiene copy para ' + L.PLATAFORMAS[m.plat] + '.</p>') +
         '<form data-form="publicar" data-id="' + p.id + '" data-plat="' + m.plat + '"><p class="label">Antes de marcarla:</p>' +
-        L.CHECKLIST_PUBLICAR.map(function (c, i) { return '<label class="check"><input type="checkbox" name="check" value="' + i + '"> ' + esc(c) + '</label>'; }).join('') +
+        L.checklistDe(m.plat).map(function (c, i) { return '<label class="check"><input type="checkbox" name="check" value="' + i + '"> ' + esc(c) + '</label>'; }).join('') +
         '<label class="campo">Enlace del post <small>(opcional)</small><input type="url" name="enlace" inputmode="url" placeholder="https://"></label>' +
         '<button class="btn grande" type="submit">Marcar como publicado</button></form>';
     } else if (m.tipo === 'vistas' && p) {
@@ -961,7 +960,7 @@
     } else if (m.tipo === 'hueco') {
       var h = { fecha: m.fecha, plataforma: m.plat, tipo: m.tipoPieza };
       var cands = L.candidatosHueco(piezas(), h);
-      cuerpo = '<h2>Llenar hueco</h2><p class="muted">' + L.fmtFechaLarga(m.fecha) + ' · ' + L.TIPOS[m.tipoPieza] + ' en ' + L.PLATAFORMAS[m.plat] + '</p>';
+      cuerpo = '<h2>Llenar hueco</h2><p class="muted">' + L.fmtFechaLarga(m.fecha) + ' · ' + L.TIPO_DIA[m.tipoPieza] + ' en ' + L.PLATAFORMAS[m.plat] + '</p>';
       if (cands.length) {
         cuerpo += '<form data-form="llenar" data-fecha="' + m.fecha + '" data-plat="' + m.plat + '"><p class="label">Del banco (ya aprobadas):</p>' +
           cands.map(function (c, i) {
@@ -1021,7 +1020,7 @@
     fs.querySelectorAll('[data-dia]').forEach(function (sm) {
       var inp = fs.querySelector('[name="fecha_' + sm.dataset.dia + '"]');
       var v = inp && inp.value;
-      sm.textContent = v ? L.fmtFechaLarga(v) + ' · ' + L.TIPO_DIA[L.diaCfg(ajustes(), v).tipo].toLowerCase() : '';
+      sm.textContent = v ? L.fmtFechaLarga(v) + ' · ' + L.TIPO_DIA[L.slotTipo(ajustes(), sm.dataset.dia, v)].toLowerCase() : '';
     });
     var ul = fs.querySelector('[data-avisos]');
     if (!ul) return;
@@ -1385,12 +1384,8 @@
       }, null, btn);
     },
     ajustes: function (f, btn) {
-      var cron = {};
-      for (var i = 0; i < 7; i++) {
-        var tipo = val(f, 'tipo_' + i);
-        var plats = ['ig', 'tt'].filter(function (pl) { return marcado(f, 'plat_' + i + '_' + pl); });
-        cron[String(i)] = { tipo: tipo, plataformas: (tipo === 'reel' || tipo === 'carrusel') ? plats : [] };
-      }
+      var cron = { ig: {}, tt: {} };
+      for (var i = 0; i < 7; i++) { cron.ig[String(i)] = val(f, 'ig_' + i); cron.tt[String(i)] = val(f, 'tt_' + i); }
       var dm = parseInt(val(f, 'dias_minimos'), 10);
       if (isNaN(dm) || dm < 0 || dm > 30) return aviso('Los días mínimos deben estar entre 0 y 30.');
       var gh = val(f, 'grabacion_hora');
