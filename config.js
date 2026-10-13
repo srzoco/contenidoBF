@@ -9,6 +9,6 @@
                   NUNCA la "secret" ni la "service_role".
    ===================================================================== */
 window.BF_CONFIG = {
-  supabaseUrl: '',
-  supabaseKey: ''
+  supabaseUrl: 'https://xooofdppgnpibasambuc.supabase.co',
+  supabaseKey: 'sb_publishable_-rf7ZUzMdnuLHs9dGnj44Q_amcRfcTY'
 };
