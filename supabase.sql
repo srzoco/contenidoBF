@@ -1,0 +1,148 @@
+-- =====================================================================
+--  Contenido Barquero — base de datos (Supabase)
+--  Pegar completo en: Supabase → SQL Editor → New query → Run
+--  Se puede volver a ejecutar sin perder datos.
+-- =====================================================================
+
+-- ---------- Equipo (quién es quién) ----------
+create table if not exists public.equipo (
+  user_id    uuid primary key default auth.uid(),
+  nombre     text not null check (length(trim(nombre)) > 0),
+  rol        text not null check (rol in ('aprueba', 'edita')),
+  telefono   text,
+  creado_en  timestamptz not null default now()
+);
+
+-- ---------- Ajustes (cronograma y regla de días) ----------
+create table if not exists public.ajustes (
+  id              int primary key default 1 check (id = 1),
+  cronograma      jsonb not null,
+  dias_minimos    int not null default 3 check (dias_minimos between 0 and 30),
+  actualizado_en  timestamptz not null default now()
+);
+
+insert into public.ajustes (id, cronograma, dias_minimos)
+values (1, '{
+  "0": {"tipo": "reel",      "plataformas": ["ig", "tt"]},
+  "1": {"tipo": "carrusel",  "plataformas": ["ig", "tt"]},
+  "2": {"tipo": "reel",      "plataformas": ["ig", "tt"]},
+  "3": {"tipo": "historias", "plataformas": []},
+  "4": {"tipo": "reel",      "plataformas": ["ig", "tt"]},
+  "5": {"tipo": "carrusel",  "plataformas": ["ig", "tt"]},
+  "6": {"tipo": "descanso",  "plataformas": []}
+}'::jsonb, 3)
+on conflict (id) do nothing;
+
+-- ---------- Piezas (cada reel o carrusel) ----------
+create table if not exists public.piezas (
+  id               uuid primary key default gen_random_uuid(),
+  titulo           text not null check (length(trim(titulo)) > 0),
+  tipo             text not null check (tipo in ('reel', 'carrusel')),
+  ig               boolean not null default true,
+  tt               boolean not null default false,
+  producto         text,
+  gancho           text,
+  objetivo         text,
+  fase             text not null default 'produccion'
+                   check (fase in ('idea', 'produccion', 'aprobada', 'publicada', 'archivada')),
+  etapa            text check (etapa in ('video', 'texto', 'diseno', 'copy')),
+  turno            text check (turno in ('edita', 'aprueba')),
+  version          int not null default 0 check (version >= 0),
+  texto_carrusel   text,
+  copy_ig          text,
+  copy_tt          text,
+  nota_version     text,
+  enlace_version   text,
+  primero          text check (primero in ('ig', 'tt')),
+  fecha_ig         date,
+  fecha_tt         date,
+  en_espera        boolean not null default false,
+  espera_producto  text,
+  espera_desde     date,
+  publicado_ig_en  timestamptz,
+  publicado_tt_en  timestamptz,
+  enlace_ig        text,
+  enlace_tt        text,
+  vistas_ig        int check (vistas_ig >= 0),
+  vistas_tt        int check (vistas_tt >= 0),
+  creado_por       uuid default auth.uid(),
+  creado_en        timestamptz not null default now(),
+  actualizado_en   timestamptz not null default now(),
+  constraint piezas_alguna_plataforma check (ig or tt),
+  constraint piezas_produccion_completa check (fase <> 'produccion' or (etapa is not null and turno is not null))
+);
+
+create index if not exists piezas_fase_idx on public.piezas (fase);
+
+-- ---------- Historial (comentarios, correcciones y aprobaciones) ----------
+-- No se edita ni se borra: es el registro de todo lo que pasó con cada pieza.
+create table if not exists public.eventos (
+  id         uuid primary key default gen_random_uuid(),
+  pieza_id   uuid not null references public.piezas (id) on delete cascade,
+  autor      uuid not null default auth.uid(),
+  tipo       text not null check (tipo in ('creada', 'idea', 'iniciada', 'editada', 'envio', 'aprobacion',
+                                           'correccion', 'comentario', 'espera', 'llego', 'fechas',
+                                           'publicado', 'vistas', 'archivada', 'reabierta')),
+  etapa      text,
+  version    int,
+  texto      text,
+  datos      jsonb not null default '{}'::jsonb,
+  creado_en  timestamptz not null default now()
+);
+
+create index if not exists eventos_pieza_idx on public.eventos (pieza_id, creado_en);
+
+-- ---------- Marca de "última actualización" ----------
+create or replace function public.tocar_actualizado() returns trigger
+language plpgsql as $$
+begin
+  new.actualizado_en := now();
+  return new;
+end $$;
+
+drop trigger if exists piezas_tocar on public.piezas;
+create trigger piezas_tocar before update on public.piezas
+  for each row execute function public.tocar_actualizado();
+
+drop trigger if exists ajustes_tocar on public.ajustes;
+create trigger ajustes_tocar before update on public.ajustes
+  for each row execute function public.tocar_actualizado();
+
+-- ---------- Seguridad: solo usuarias con sesión iniciada ----------
+alter table public.equipo  enable row level security;
+alter table public.ajustes enable row level security;
+alter table public.piezas  enable row level security;
+alter table public.eventos enable row level security;
+
+revoke all on public.equipo, public.ajustes, public.piezas, public.eventos from anon, authenticated;
+grant select, insert, update on public.equipo  to authenticated;
+grant select, update         on public.ajustes to authenticated;
+grant select, insert, update on public.piezas  to authenticated;
+grant select, insert         on public.eventos to authenticated;
+
+drop policy if exists equipo_ver on public.equipo;
+create policy equipo_ver on public.equipo for select to authenticated using (true);
+drop policy if exists equipo_crear_propio on public.equipo;
+create policy equipo_crear_propio on public.equipo for insert to authenticated with check (user_id = auth.uid());
+drop policy if exists equipo_editar_propio on public.equipo;
+create policy equipo_editar_propio on public.equipo for update to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+drop policy if exists ajustes_ver on public.ajustes;
+create policy ajustes_ver on public.ajustes for select to authenticated using (true);
+drop policy if exists ajustes_editar on public.ajustes;
+create policy ajustes_editar on public.ajustes for update to authenticated using (true) with check (true);
+
+drop policy if exists piezas_ver on public.piezas;
+create policy piezas_ver on public.piezas for select to authenticated using (true);
+drop policy if exists piezas_crear on public.piezas;
+create policy piezas_crear on public.piezas for insert to authenticated with check (true);
+drop policy if exists piezas_editar on public.piezas;
+create policy piezas_editar on public.piezas for update to authenticated using (true) with check (true);
+
+drop policy if exists eventos_ver on public.eventos;
+create policy eventos_ver on public.eventos for select to authenticated using (true);
+drop policy if exists eventos_crear on public.eventos;
+create policy eventos_crear on public.eventos for insert to authenticated with check (autor = auth.uid());
+
+-- Listo. Siguiente paso de la guía: crear los dos usuarios en Authentication → Users.
