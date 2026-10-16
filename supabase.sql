@@ -190,4 +190,97 @@ create policy grab_eventos_ver on public.grabacion_eventos for select to authent
 drop policy if exists grab_eventos_crear on public.grabacion_eventos;
 create policy grab_eventos_crear on public.grabacion_eventos for insert to authenticated with check (autor = auth.uid());
 
+-- =====================================================================
+--  v4 — flujo simplificado, fechas en cualquier etapa y notificaciones
+-- =====================================================================
+
+-- Días de anticipación para entregar (fecha límite = publicación − N días)
+alter table public.ajustes add column if not exists dias_entrega int not null default 2 check (dias_entrega between 0 and 14);
+
+-- Migración: video y copy ahora se aprueban juntos.
+--   Reel en etapa 'copy'     → etapa 'video' (video + copy)
+--   Carrusel en etapa 'copy' → etapa 'diseno' (diseño + copy)
+update public.piezas set etapa = 'video'  where etapa = 'copy' and tipo = 'reel';
+update public.piezas set etapa = 'diseno' where etapa = 'copy' and tipo = 'carrusel';
+
+-- ---------- Suscripciones a notificaciones (un registro por dispositivo) ----------
+create table if not exists public.push_subs (
+  endpoint    text primary key,
+  user_id     uuid not null default auth.uid(),
+  p256dh      text not null,
+  auth        text not null,
+  user_agent  text,
+  creado_en   timestamptz not null default now()
+);
+alter table public.push_subs enable row level security;
+revoke all on public.push_subs from anon, authenticated;
+grant select, insert, update, delete on public.push_subs to authenticated;
+drop policy if exists push_ver on public.push_subs;
+create policy push_ver on public.push_subs for select to authenticated using (user_id = auth.uid());
+drop policy if exists push_crear on public.push_subs;
+create policy push_crear on public.push_subs for insert to authenticated with check (user_id = auth.uid());
+drop policy if exists push_editar on public.push_subs;
+create policy push_editar on public.push_subs for update to authenticated using (true) with check (user_id = auth.uid());
+drop policy if exists push_borrar on public.push_subs;
+create policy push_borrar on public.push_subs for delete to authenticated using (user_id = auth.uid());
+
+-- ---------- Configuración privada de notificaciones ----------
+-- La llena sola la función «notificar» la primera vez (claves, dirección y secreto).
+-- Nadie con sesión puede leerla: solo el servidor.
+create table if not exists public.push_config (
+  id             int primary key default 1 check (id = 1),
+  vapid_publico  text not null,
+  vapid_privado  jsonb not null,
+  secreto        text not null,
+  url            text not null,
+  creado_en      timestamptz not null default now()
+);
+alter table public.push_config enable row level security;
+revoke all on public.push_config from anon, authenticated;
+
+-- ---------- Avisos automáticos ----------
+-- Extensiones de Supabase para llamar a la función y programar el resumen diario.
+do $$ begin create extension if not exists pg_net; exception when others then raise notice 'pg_net no disponible: %', sqlerrm; end $$;
+do $$ begin create extension if not exists pg_cron; exception when others then raise notice 'pg_cron no disponible: %', sqlerrm; end $$;
+
+-- Llama a la función «notificar» sin frenar nunca el guardado (si algo falla, solo no se avisa).
+create or replace function public.bf_avisar(cuerpo jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare c public.push_config;
+begin
+  select * into c from public.push_config where id = 1;
+  if c is null then return; end if;
+  perform net.http_post(
+    url := c.url,
+    body := cuerpo,
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-bf-secreto', c.secreto)
+  );
+exception when others then
+  raise notice 'aviso no enviado: %', sqlerrm;
+end $$;
+revoke all on function public.bf_avisar(jsonb) from public, anon, authenticated;
+
+create or replace function public.bf_aviso_evento() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform public.bf_avisar(jsonb_build_object('tipo', 'evento', 'tabla', TG_TABLE_NAME, 'id', new.id));
+  return new;
+end $$;
+
+drop trigger if exists eventos_avisar on public.eventos;
+create trigger eventos_avisar after insert on public.eventos
+  for each row execute function public.bf_aviso_evento();
+drop trigger if exists grabacion_eventos_avisar on public.grabacion_eventos;
+create trigger grabacion_eventos_avisar after insert on public.grabacion_eventos
+  for each row execute function public.bf_aviso_evento();
+
+-- Resumen diario a las 7:30 a. m. de Venezuela (11:30 UTC)
+do $$
+begin
+  begin perform cron.unschedule('bf-resumen-diario'); exception when others then null; end;
+  perform cron.schedule('bf-resumen-diario', '30 11 * * *', $cron$select public.bf_avisar('{"tipo":"diario"}'::jsonb)$cron$);
+exception when others then
+  raise notice 'No se pudo programar el resumen diario: %', sqlerrm;
+end $$;
+
 -- Listo. Siguiente paso de la guía: crear los dos usuarios en Authentication → Users.

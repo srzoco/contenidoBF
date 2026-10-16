@@ -11,8 +11,9 @@
   var PLATAFORMAS = { ig: 'Instagram', tt: 'TikTok' };
   var PLAT_CORTO = { ig: 'IG', tt: 'TikTok' };
   var TIPOS = { reel: 'Reel', carrusel: 'Carrusel' };
-  var ETAPAS = { reel: ['video', 'copy'], carrusel: ['texto', 'diseno', 'copy'] };
-  var ETAPA_LABEL = { video: 'Video', texto: 'Texto del carrusel', diseno: 'Diseño', copy: 'Copy y fechas' };
+  // Reel: una sola revisión (video + copy). Carrusel: texto → diseño + copy. ('copy' solo existe en datos viejos.)
+  var ETAPAS = { reel: ['video'], carrusel: ['texto', 'diseno'] };
+  var ETAPA_LABEL = { video: 'Video y copy', texto: 'Texto', diseno: 'Diseño y copy', copy: 'Copy' };
   var TIPO_DIA = { reel: 'Reel', carrusel: 'Carrusel', cualquiera: 'Reel o carrusel', historias: 'Solo historias', descanso: 'Descanso' };
   var DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
   var DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -25,7 +26,7 @@
     ig: { '0': 'reel', '1': 'carrusel', '2': 'reel', '3': 'historias', '4': 'reel', '5': 'carrusel', '6': 'descanso' },
     tt: { '0': 'cualquiera', '1': 'cualquiera', '2': 'cualquiera', '3': 'cualquiera', '4': 'cualquiera', '5': 'cualquiera', '6': 'cualquiera' }
   };
-  var AJUSTES_BASE = { id: 1, cronograma: CRONOGRAMA_BASE, dias_minimos: 3, grabacion_dia: 2, grabacion_hora: '11:00' };
+  var AJUSTES_BASE = { id: 1, cronograma: CRONOGRAMA_BASE, dias_minimos: 3, dias_entrega: 2, grabacion_dia: 2, grabacion_hora: '11:00' };
 
   var CHIPS = {
     video: ['Cortar inicio', 'Más corto', 'Ritmo / cortes', 'Texto en pantalla', 'Subtítulos', 'Música / audio', 'Color / luz', 'Logo / marca', 'Precio / dato', 'Portada'],
@@ -33,6 +34,13 @@
     diseno: ['Tipografía', 'Colores de marca', 'Foto / imagen', 'Legibilidad', 'Alineación / espacios', 'Logo', 'Portada'],
     copy: ['Gancho', 'Más corto', 'Llamado a la acción', 'Hashtags', 'Ortografía', 'Tono de la marca', 'Precio / dato']
   };
+  // Grupos de correcciones rápidas por etapa
+  function gruposChips(etapa) {
+    if (etapa === 'video') return [{ titulo: 'Video', chips: CHIPS.video }, { titulo: 'Copy', chips: CHIPS.copy }];
+    if (etapa === 'diseno') return [{ titulo: 'Diseño', chips: CHIPS.diseno }, { titulo: 'Copy', chips: CHIPS.copy }];
+    if (etapa === 'texto') return [{ titulo: 'Texto', chips: CHIPS.texto }];
+    return [{ titulo: 'Copy', chips: CHIPS.copy }];
+  }
   // Cómo se ubica un punto de corrección según la etapa
   var UBICACION = { video: 'Min. 0:12', diseno: 'Slide #', texto: 'Slide #', copy: null };
 
@@ -48,6 +56,16 @@
 
   var TIPOS_EVENTO = ['creada', 'idea', 'iniciada', 'editada', 'envio', 'aprobacion', 'correccion', 'comentario',
     'espera', 'llego', 'fechas', 'publicado', 'vistas', 'archivada', 'reabierta'];
+
+  // Columnas del tablero (en orden del flujo)
+  var COLUMNAS = [
+    { clave: 'ideas', titulo: 'Ideas', icono: '💡' },
+    { clave: 'grabar', titulo: 'Por grabar', icono: '🎬' },
+    { clave: 'editar', titulo: 'En edición', icono: '✂️' },
+    { clave: 'aprobar', titulo: 'Por aprobar', icono: '👀' },
+    { clave: 'lista', titulo: 'Listas', icono: '✅' },
+    { clave: 'publicada', titulo: 'Publicadas', icono: '🚀' }
+  ];
 
   // ---------- Fechas ----------
   function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -91,8 +109,55 @@
   function publicadoEn(p, plat) { return p['publicado_' + plat + '_en'] || null; }
   function pendientesDePublicar(p) { return plataformasDe(p).filter(function (pl) { return !publicadoEn(p, pl); }); }
   function etapasDe(p) { return ETAPAS[p.tipo] || ETAPAS.reel; }
-  // ¿Ocupa un espacio del calendario?
-  function ocupa(p) { return p.fase !== 'archivada' && p.fase !== 'idea' && !p.en_espera; }
+  // 'copy' (datos viejos) cuenta como la última etapa del tipo
+  function etapaNorm(p) { var e = etapasDe(p); return p.etapa === 'copy' || e.indexOf(p.etapa) < 0 ? e[e.length - 1] : p.etapa; }
+  function esFinal(p) { var e = etapasDe(p); return etapaNorm(p) === e[e.length - 1]; }
+  // ¿Ocupa un espacio del calendario? (cualquier pieza con fecha, menos archivadas o en espera)
+  function ocupa(p) { return p.fase !== 'archivada' && !p.en_espera; }
+  function entrega(ajustes) { var m = ajustes && ajustes.dias_entrega; return (m == null || isNaN(m)) ? 2 : +m; }
+  function proximaFecha(p) {
+    var f = pendientesDePublicar(p).map(function (pl) { return fechaDe(p, pl); }).filter(Boolean).sort();
+    return f[0] || null;
+  }
+  // Fecha límite para tener la pieza lista (editada y enviada): N días antes de la primera publicación
+  function fechaLimite(p, ajustes) {
+    if (p.fase !== 'idea' && p.fase !== 'produccion') return null;
+    var f = proximaFecha(p);
+    return f ? addDias(f, -entrega(ajustes)) : null;
+  }
+  function columnaDe(p) {
+    if (p.fase === 'idea') return p.grabacion_id ? 'grabar' : 'ideas';
+    if (p.fase === 'produccion') return p.turno === 'aprueba' ? 'aprobar' : 'editar';
+    if (p.fase === 'aprobada') return 'lista';
+    if (p.fase === 'publicada') return 'publicada';
+    return 'archivada';
+  }
+  // A quién le toca mover la pieza: 'edita' | 'aprueba' | 'ambas' | null
+  function leToca(p) {
+    var c = columnaDe(p);
+    if (p.en_espera && (c === 'lista' || c === 'ideas' || c === 'grabar')) return null; // espera la mercancía
+    if (c === 'editar') return 'edita';
+    if (c === 'aprobar') return 'aprueba';
+    if (c === 'grabar') return 'ambas';
+    if (c === 'lista') return pendientesDePublicar(p).some(function (pl) { return !fechaDe(p, pl); }) && !p.en_espera ? 'aprueba' : 'edita';
+    return null;
+  }
+  // Pasos del flujo para mostrar el recorrido de la pieza
+  function pasosDe(p) {
+    var pasos = p.tipo === 'carrusel'
+      ? ['Idea', 'Texto', 'Aprobación del texto', 'Diseño y copy', 'Aprobación final', 'Lista', 'Publicada']
+      : ['Idea', 'Grabación', 'Edición', 'Aprobación', 'Lista', 'Publicada'];
+    var i = 0, terminado = false;
+    if (p.fase === 'idea') i = (p.tipo === 'reel' && p.grabacion_id) ? 1 : 0;
+    else if (p.fase === 'produccion') {
+      var et = etapaNorm(p);
+      if (p.tipo === 'carrusel') i = et === 'texto' ? (p.turno === 'aprueba' ? 2 : 1) : (p.turno === 'aprueba' ? 4 : 3);
+      else i = p.turno === 'aprueba' ? 3 : 2;
+    } else if (p.fase === 'aprobada') i = pasos.length - 2;
+    else if (p.fase === 'publicada') { i = pasos.length - 1; terminado = true; }
+    else if (p.fase === 'archivada') i = -1;
+    return { pasos: pasos, actual: i, terminado: terminado };
+  }
   // Acepta también el formato viejo ({ "0": {tipo, plataformas} }): IG sale de ahí y TikTok queda todos los días.
   function cron(ajustes) {
     var c = (ajustes && ajustes.cronograma) || CRONOGRAMA_BASE;
@@ -118,27 +183,21 @@
   function estadoDe(p, hoy) {
     hoy = hoy || hoyISO();
     if (p.fase === 'archivada') return { clave: 'archivada', texto: 'Archivada', tono: 'gris' };
-    if (p.en_espera) return { clave: 'espera', texto: 'En espera: ' + (p.espera_producto || 'mercancía'), tono: 'espera' };
-    if (p.fase === 'idea') return { clave: 'idea', texto: 'Idea', tono: 'gris' };
+    if (p.fase === 'idea') return p.grabacion_id ? { clave: 'grabar', texto: 'Por grabar', tono: 'gris' } : { clave: 'idea', texto: 'Idea', tono: 'gris' };
     if (p.fase === 'produccion') {
-      var et = ETAPA_LABEL[p.etapa] || p.etapa;
-      if (p.turno === 'aprueba') return { clave: 'revisar', texto: et + ' v' + p.version + ' · por aprobar', tono: 'aprueba' };
-      if (p.version > 0) return { clave: 'corregir', texto: et + ' · con correcciones', tono: 'corregir' };
-      return { clave: 'editar', texto: et + ' · en edición', tono: 'edita' };
+      var et = ETAPA_LABEL[etapaNorm(p)];
+      if (p.turno === 'aprueba') return { clave: 'revisar', texto: 'Por aprobar · ' + et + ' v' + p.version, tono: 'aprueba' };
+      if (p.version > 0) return { clave: 'corregir', texto: 'Con correcciones · ' + et, tono: 'corregir' };
+      return { clave: 'editar', texto: 'En edición · ' + et, tono: 'edita' };
     }
     if (p.fase === 'publicada') return { clave: 'publicada', texto: 'Publicada', tono: 'ok' };
     if (p.fase === 'aprobada') {
       var pend = pendientesDePublicar(p);
-      var atrasada = pend.some(function (pl) { var f = fechaDe(p, pl); return f && f < hoy; });
-      if (atrasada) return { clave: 'atrasada', texto: 'Atrasada', tono: 'atrasada' };
-      var conFecha = pend.filter(function (pl) { return fechaDe(p, pl); });
       var publicadas = plataformasDe(p).filter(function (pl) { return publicadoEn(p, pl); });
-      if (conFecha.length === 0) {
-        return { clave: 'banco', texto: publicadas.length ? 'Publicada en ' + publicadas.map(function (x) { return PLAT_CORTO[x]; }).join(' y ') + ' · resto en banco' : 'En banco', tono: 'banco' };
-      }
-      var txt = conFecha.map(function (pl) { return PLAT_CORTO[pl] + ' ' + fmtFecha(fechaDe(p, pl)); }).join(' · ');
-      var prefijo = publicadas.length ? 'Publicada en ' + publicadas.map(function (x) { return PLAT_CORTO[x]; }).join(' y ') + ' · ' : 'Programada: ';
-      return { clave: 'programada', texto: prefijo + txt, tono: 'ok' };
+      var pre = publicadas.length ? 'Publicada en ' + publicadas.map(function (x) { return PLAT_CORTO[x]; }).join(' y ') + ' · ' : '';
+      if (pend.some(function (pl) { var f = fechaDe(p, pl); return f && f < hoy; })) return { clave: 'atrasada', texto: pre + 'No se publicó a tiempo', tono: 'atrasada' };
+      if (pend.every(function (pl) { return !fechaDe(p, pl); })) return { clave: 'sinfecha', texto: pre + 'Lista · sin fecha', tono: 'banco' };
+      return { clave: 'programada', texto: pre + 'Lista · programada', tono: 'ok' };
     }
     return { clave: p.fase, texto: p.fase, tono: 'gris' };
   }
@@ -231,12 +290,14 @@
     return res;
   }
 
-  // Piezas del banco que sirven para un hueco
+  // Piezas que pueden ir en un hueco: cualquiera activa, sin fecha en esa plataforma (primero las más avanzadas)
+  var ORDEN_COL = { lista: 0, aprobar: 1, editar: 2, grabar: 3, ideas: 4 };
   function candidatosHueco(piezas, hueco) {
     return piezas.filter(function (p) {
-      return p.fase === 'aprobada' && !p.en_espera && (p.tipo === hueco.tipo || hueco.tipo === 'cualquiera') && p[hueco.plataforma] &&
+      return ['idea', 'produccion', 'aprobada'].indexOf(p.fase) >= 0 && !p.en_espera &&
+        (p.tipo === hueco.tipo || hueco.tipo === 'cualquiera') && p[hueco.plataforma] &&
         !publicadoEn(p, hueco.plataforma) && !fechaDe(p, hueco.plataforma);
-    });
+    }).sort(function (a, b) { return ORDEN_COL[columnaDe(a)] - ORDEN_COL[columnaDe(b)]; });
   }
 
   // ---------- Acciones (devuelven {patch, match, eventos}) ----------
@@ -250,7 +311,7 @@
     if (!titulo) throw err('Ponle un título a la pieza.');
     var tipo = datos.tipo === 'carrusel' ? 'carrusel' : 'reel';
     var ig = !!datos.ig, tt = !!datos.tt;
-    var esIdea = !!datos.idea;
+    var esIdea = !!datos.idea || !!datos.grabacion_id;
     if (!ig && !tt) {
       if (esIdea) { ig = true; tt = true; } else throw err('Elige al menos una plataforma.');
     }
@@ -264,9 +325,10 @@
       version: 0,
       en_espera: !!datos.en_espera && !!txt(datos.espera_producto),
       espera_producto: datos.en_espera ? limpiar(datos.espera_producto) : null,
-      espera_desde: datos.en_espera && txt(datos.espera_producto) ? (opciones.hoy || hoyISO()) : null
+      espera_desde: datos.en_espera && txt(datos.espera_producto) ? (opciones.hoy || hoyISO()) : null,
+      grabacion_id: datos.grabacion_id || null
     };
-    var eventos = [{ tipo: esIdea ? 'idea' : 'creada', texto: null, datos: { tipo: tipo, plataformas: plataformasDe(fila) } }];
+    var eventos = [{ tipo: esIdea ? 'idea' : 'creada', texto: null, datos: { tipo: tipo, plataformas: plataformasDe(fila), grabacion_id: fila.grabacion_id || undefined } }];
     if (fila.en_espera) eventos.push({ tipo: 'espera', texto: fila.espera_producto, datos: {} });
     return { fila: fila, eventos: eventos };
   }
@@ -278,33 +340,32 @@
     }
   }
   function matchDe(p) { return { fase: p.fase, turno: p.turno, version: p.version || 0, etapa: p.etapa }; }
+  function copiaRequerida(p, datos, patch, ev) {
+    plataformasDe(p).forEach(function (pl) {
+      if (!txt(datos['copy_' + pl])) throw err('Falta el copy de ' + PLATAFORMAS[pl] + '.');
+      patch['copy_' + pl] = String(datos['copy_' + pl]).trim();
+      ev['copy_' + pl] = patch['copy_' + pl];
+    });
+  }
 
   function accionEnviar(p, datos) {
     exigirProduccion(p, 'edita');
     datos = datos || {};
+    var et = etapaNorm(p);
     var version = (p.version || 0) + 1;
-    var patch = { turno: 'aprueba', version: version, nota_version: limpiar(datos.nota), enlace_version: limpiar(datos.enlace) };
+    var patch = { turno: 'aprueba', version: version, etapa: et, nota_version: limpiar(datos.nota), enlace_version: limpiar(datos.enlace) };
     var ev = {};
-    if (p.etapa === 'texto') {
+    if (et === 'texto') {
       if (!txt(datos.texto_carrusel)) throw err('Escribe el texto del carrusel antes de enviarlo.');
       patch.texto_carrusel = String(datos.texto_carrusel).trim();
       ev.texto_carrusel = patch.texto_carrusel;
     }
-    if (p.etapa === 'copy') {
-      plataformasDe(p).forEach(function (pl) {
-        if (!txt(datos['copy_' + pl])) throw err('Falta el copy de ' + PLATAFORMAS[pl] + '.');
-        patch['copy_' + pl] = String(datos['copy_' + pl]).trim();
-        ev['copy_' + pl] = patch['copy_' + pl];
-      });
-      Object.assign(patch, fechasPatch(p, datos.banco ? {} : datos));
-      ev.fecha_ig = patch.fecha_ig; ev.fecha_tt = patch.fecha_tt; ev.primero = patch.primero;
-      if (datos.banco || (!patch.fecha_ig && !patch.fecha_tt)) ev.banco = true;
-    }
+    if (esFinal(p)) copiaRequerida(p, datos, patch, ev);
     if (datos.resueltas && datos.resueltas.length) ev.resueltas = datos.resueltas;
     if (patch.enlace_version) ev.enlace = patch.enlace_version;
     return {
       patch: patch, match: matchDe(p),
-      eventos: [{ tipo: 'envio', etapa: p.etapa, version: version, texto: patch.nota_version, datos: ev }]
+      eventos: [{ tipo: 'envio', etapa: et, version: version, texto: patch.nota_version, datos: ev }]
     };
   }
 
@@ -313,7 +374,9 @@
     var out = {};
     ['ig', 'tt'].forEach(function (pl) {
       if (publicadoEn(p, pl)) return; // no se toca una fecha ya publicada
-      out['fecha_' + pl] = p[pl] ? (limpiar(f['fecha_' + pl]) || null) : null;
+      if (!p[pl]) { if (p['fecha_' + pl]) out['fecha_' + pl] = null; return; }
+      if (!(('fecha_' + pl) in f)) return; // solo se cambian las fechas que vienen
+      out['fecha_' + pl] = limpiar(f['fecha_' + pl]) || null;
     });
     var prim = f.primero === 'ig' || f.primero === 'tt' ? f.primero : null;
     if (!prim) {
@@ -330,32 +393,27 @@
     exigirProduccion(p, 'aprueba');
     datos = datos || {};
     var etapas = etapasDe(p);
-    var i = etapas.indexOf(p.etapa);
+    var et = etapaNorm(p);
+    var i = etapas.indexOf(et);
     var ultima = i === etapas.length - 1;
-    var ev = { tipo: 'aprobacion', etapa: p.etapa, version: p.version, texto: limpiar(datos.comentario), datos: {} };
-    var patch;
+    var ev = { tipo: 'aprobacion', etapa: et, version: p.version, texto: limpiar(datos.comentario), datos: {} };
     // Ajustes menores que hace quien aprueba (sin devolver la pieza)
     var ajustes = {};
-    if (p.etapa === 'texto' && datos.texto_carrusel != null && txt(datos.texto_carrusel) && txt(datos.texto_carrusel) !== txt(p.texto_carrusel)) {
+    if (et === 'texto' && datos.texto_carrusel != null && txt(datos.texto_carrusel) && txt(datos.texto_carrusel) !== txt(p.texto_carrusel)) {
       ajustes.texto_carrusel = String(datos.texto_carrusel).trim();
     }
-    if (p.etapa === 'copy') {
+    if (ultima) {
       plataformasDe(p).forEach(function (pl) {
         var v = datos['copy_' + pl];
         if (v != null && txt(v) && txt(v) !== txt(p['copy_' + pl])) ajustes['copy_' + pl] = String(v).trim();
+        if (!txt(ajustes['copy_' + pl] || p['copy_' + pl])) throw err('Falta el copy de ' + PLATAFORMAS[pl] + ': escríbelo o pide la corrección.');
       });
     }
-    if (ultima) {
-      patch = { fase: 'aprobada', etapa: null, turno: null, nota_version: null, enlace_version: null };
-      if (p.etapa === 'copy') {
-        var fp = fechasPatch(p, datos.banco ? {} : (datos.fechas || datos));
-        Object.assign(patch, fp);
-        ev.datos.fecha_ig = fp.fecha_ig; ev.datos.fecha_tt = fp.fecha_tt; ev.datos.primero = fp.primero;
-        if (!fp.fecha_ig && !fp.fecha_tt) ev.datos.banco = true;
-      }
-    } else {
-      patch = { etapa: etapas[i + 1], turno: 'edita', version: 0, nota_version: null, enlace_version: null };
-    }
+    var patch = ultima
+      ? { fase: 'aprobada', etapa: null, turno: null, nota_version: null, enlace_version: null }
+      : { etapa: etapas[i + 1], turno: 'edita', version: 0, nota_version: null, enlace_version: null };
+    if (ultima && pendientesDePublicar(p).every(function (pl) { return !fechaDe(p, pl); })) ev.datos.sinfecha = true;
+    if (!ultima) ev.datos.siguiente = etapas[i + 1];
     if (Object.keys(ajustes).length) {
       Object.assign(patch, ajustes);
       ev.datos.ajustes = ajustes;
@@ -366,6 +424,7 @@
   function accionCorregir(p, datos) {
     exigirProduccion(p, 'aprueba');
     datos = datos || {};
+    var et = etapaNorm(p);
     var chips = (datos.chips || []).filter(Boolean);
     var puntos = (datos.puntos || []).map(function (x) {
       return { ubicacion: limpiar(x.ubicacion), texto: limpiar(x.texto) };
@@ -373,8 +432,8 @@
     var comentario = limpiar(datos.comentario);
     if (!chips.length && !puntos.length && !comentario) throw err('Indica al menos una corrección.');
     return {
-      patch: { turno: 'edita' }, match: matchDe(p),
-      eventos: [{ tipo: 'correccion', etapa: p.etapa, version: p.version, texto: comentario, datos: { chips: chips, puntos: puntos } }]
+      patch: { turno: 'edita', etapa: et }, match: matchDe(p),
+      eventos: [{ tipo: 'correccion', etapa: et, version: p.version, texto: comentario, datos: { chips: chips, puntos: puntos } }]
     };
   }
 
@@ -398,13 +457,16 @@
     };
   }
 
-  function accionFechas(p, fechas) {
-    if (p.fase !== 'aprobada') throw err('Solo se programan piezas ya aprobadas.');
-    if (p.en_espera) throw err('Esta pieza está en espera de mercancía.');
+  function accionFechas(p, fechas, ajustes) {
+    if (['idea', 'produccion', 'aprobada'].indexOf(p.fase) < 0) throw err(p.fase === 'publicada' ? 'Ya está publicada.' : 'Esta pieza no está activa.');
+    if (p.en_espera) throw err('Está en espera de mercancía: marca «Llegó» antes de ponerle fecha.');
     var fp = fechasPatch(p, fechas);
-    var datos = { fecha_ig: fp.fecha_ig, fecha_tt: fp.fecha_tt, primero: fp.primero };
-    if (!fp.fecha_ig && !fp.fecha_tt) datos.banco = true;
-    return { patch: fp, match: { fase: 'aprobada' }, eventos: [{ tipo: 'fechas', texto: null, datos: datos }] };
+    var cambio = ['ig', 'tt'].some(function (pl) { return fp['fecha_' + pl] !== undefined && (fp['fecha_' + pl] || null) !== (p['fecha_' + pl] || null); });
+    if (!cambio) throw err('No cambiaste ninguna fecha.');
+    var nueva = Object.assign({}, p, fp);
+    var datos = { fecha_ig: fp.fecha_ig, fecha_tt: fp.fecha_tt, primero: fp.primero, fase: p.fase, limite: fechaLimite(nueva, ajustes) };
+    if (!fp.fecha_ig && !fp.fecha_tt) datos.sinfecha = true;
+    return { patch: fp, match: { en_espera: false }, eventos: [{ tipo: 'fechas', texto: null, datos: datos }] };
   }
 
   function accionPublicar(p, plat, datos, ahora, hoy) {
@@ -466,8 +528,16 @@
     var ig = datos.ig != null ? !!datos.ig : p.ig, tt = datos.tt != null ? !!datos.tt : p.tt;
     if (!ig && !tt) throw err('Elige al menos una plataforma.');
     var patch = { fase: 'produccion', tipo: tipo, ig: ig, tt: tt, etapa: ETAPAS[tipo][0], turno: 'edita', version: 0 };
+    if (datos.titulo != null && txt(datos.titulo)) patch.titulo = txt(datos.titulo);
     ['producto', 'gancho', 'objetivo'].forEach(function (k) { if (datos[k] != null) patch[k] = limpiar(datos[k]); });
     return { patch: patch, match: { fase: 'idea' }, eventos: [{ tipo: 'iniciada', texto: null, datos: { tipo: tipo } }] };
+  }
+
+  function accionAGrabacion(p, grabacionId) {
+    if (p.fase !== 'idea') throw err('Solo las ideas se planifican para grabar.');
+    if ((p.grabacion_id || null) === (grabacionId || null)) throw err(grabacionId ? 'Ya está en esa grabación.' : 'No estaba en ninguna grabación.');
+    return { patch: { grabacion_id: grabacionId || null }, match: { fase: 'idea' },
+      eventos: [{ tipo: 'editada', texto: grabacionId ? 'planificada para grabar' : 'quitada de la grabación', datos: { grabacion_id: grabacionId || null } }] };
   }
 
   function puedeCambiarTipo(p) {
@@ -487,6 +557,7 @@
       if (!puedeCambiarTipo(p)) throw err('El tipo ya no se puede cambiar en esta etapa.');
       patch.tipo = datos.tipo;
       if (p.fase === 'produccion') patch.etapa = ETAPAS[datos.tipo][0];
+      if (datos.tipo === 'carrusel' && p.fase === 'produccion' && (p.version || 0) > 0) throw err('El tipo ya no se puede cambiar en esta etapa.');
       cambios.push('tipo');
     }
     var ig = datos.ig != null ? !!datos.ig : p.ig, tt = datos.tt != null ? !!datos.tt : p.tt;
@@ -512,16 +583,16 @@
   // ---------- Pendientes por rol ----------
   function pendientes(piezas, eventos, rol, hoy, ajustes) {
     hoy = hoy || hoyISO();
-    var r = { revisar: [], corregir: [], editar: [], publicar: [], vistas: [], espera: [], atrasadas: [], hoy: [], huecos: [] };
+    var r = { revisar: [], editar: [], publicar: [], programar: [], riesgo: [], vistas: [], espera: [], grabar: [], atrasadas: [], hoy: [], huecos: [] };
+    var ent = entrega(ajustes);
     piezas.forEach(function (p) {
-      if (p.fase === 'archivada' || p.fase === 'idea') return;
-      if (p.en_espera) { r.espera.push(p); return; }
-      if (p.fase === 'produccion') {
-        if (p.turno === 'aprueba') r.revisar.push(p);
-        else if (p.version > 0) r.corregir.push(p);
-        else r.editar.push(p);
-      }
-      if (p.fase === 'aprobada') {
+      if (p.fase === 'archivada') return;
+      if (p.en_espera && p.fase !== 'publicada') r.espera.push(p);
+      var col = columnaDe(p);
+      if (col === 'grabar') r.grabar.push(p);
+      if (col === 'aprobar') r.revisar.push(p);
+      if (col === 'editar') r.editar.push(p);
+      if (p.fase === 'aprobada' && !p.en_espera) {
         pendientesDePublicar(p).forEach(function (pl) {
           var f = fechaDe(p, pl);
           if (f && f <= hoy) {
@@ -530,31 +601,41 @@
             (item.atrasada ? r.atrasadas : r.hoy).push(item);
           }
         });
+        if (pendientesDePublicar(p).some(function (pl) { return !fechaDe(p, pl); })) r.programar.push(p);
+      }
+      // En riesgo: tiene fecha cerca y todavía no está aprobada
+      if ((p.fase === 'idea' || p.fase === 'produccion') && !p.en_espera) {
+        var f0 = proximaFecha(p);
+        if (f0 && diffDias(hoy, f0) <= ent) r.riesgo.push({ pieza: p, fecha: f0, limite: fechaLimite(p, ajustes) });
       }
       plataformasDe(p).forEach(function (pl) {
         var pub = publicadoEn(p, pl);
         if (pub && p['vistas_' + pl] == null && diffDias(String(pub).slice(0, 10), hoy) >= 7) r.vistas.push({ pieza: p, plataforma: pl });
       });
     });
-    var ultimoEnvio = {};
-    (eventos || []).forEach(function (e) { if (e.tipo === 'envio') ultimoEnvio[e.pieza_id] = e.creado_en; });
+    var ultimoEnv = {};
+    (eventos || []).forEach(function (e) { if (e.tipo === 'envio') ultimoEnv[e.pieza_id] = e.creado_en; });
+    var porFecha = function (a, b) { var fa = proximaFecha(a) || '9999', fb = proximaFecha(b) || '9999'; return fa < fb ? -1 : fa > fb ? 1 : 0; };
     r.revisar.sort(function (a, b) {
-      var fa = minFecha(a), fb = minFecha(b);
-      if (fa !== fb) return fa < fb ? -1 : 1;
-      return String(ultimoEnvio[a.id] || a.actualizado_en || '') < String(ultimoEnvio[b.id] || b.actualizado_en || '') ? -1 : 1;
+      var x = porFecha(a, b);
+      if (x) return x;
+      return String(ultimoEnv[a.id] || a.actualizado_en || '') < String(ultimoEnv[b.id] || b.actualizado_en || '') ? -1 : 1;
     });
+    r.editar.sort(function (a, b) {
+      var c = (b.version > 0) - (a.version > 0); // correcciones primero si no hay fecha
+      var x = porFecha(a, b);
+      return x || c;
+    });
+    r.riesgo.sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
     r.publicar.sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0; });
     r.huecos = huecos(piezas, ajustes, hoy, 7);
-    r.totalBase = rol === 'aprueba'
-      ? r.revisar.length
-      : r.corregir.length + r.editar.length + r.publicar.length + r.vistas.length;
-    r.total = r.totalBase;
+    r.total = rol === 'aprueba'
+      ? r.revisar.length + r.programar.length
+      : r.editar.length + r.publicar.length + r.vistas.length;
+    r.totalBase = r.total;
     return r;
   }
-  function minFecha(p) {
-    var f = [p.fecha_ig, p.fecha_tt].filter(Boolean).sort()[0];
-    return f || '9999-12-31';
-  }
+  function minFecha(p) { return proximaFecha(p) || '9999-12-31'; }
 
   // Esperas agrupadas por producto
   function esperasPorProducto(piezas) {
@@ -582,17 +663,20 @@
     });
     return r;
   }
+  // Eventos de la etapa actual: los posteriores a la última aprobación / inicio de producción
+  function eventosEtapaActual(eventos, p) {
+    var lista = eventosDe(eventos, p.id);
+    var corte = -1;
+    lista.forEach(function (e, i) { if (e.tipo === 'aprobacion' || e.tipo === 'iniciada' || e.tipo === 'reabierta') corte = i; });
+    return lista.slice(corte + 1);
+  }
   function ultimaCorreccion(eventos, p) {
-    var lista = (eventos || []).filter(function (e) {
-      return e.pieza_id === p.id && e.tipo === 'correccion' && e.etapa === p.etapa;
-    }).sort(function (a, b) { return a.creado_en < b.creado_en ? -1 : 1; });
-    return lista[lista.length - 1] || null;
+    var l = eventosEtapaActual(eventos, p).filter(function (e) { return e.tipo === 'correccion'; });
+    return l[l.length - 1] || null;
   }
   function ultimoEnvio(eventos, p) {
-    var lista = (eventos || []).filter(function (e) {
-      return e.pieza_id === p.id && e.tipo === 'envio' && e.etapa === p.etapa;
-    }).sort(function (a, b) { return a.creado_en < b.creado_en ? -1 : 1; });
-    return lista[lista.length - 1] || null;
+    var l = eventosEtapaActual(eventos, p).filter(function (e) { return e.tipo === 'envio'; });
+    return l[l.length - 1] || null;
   }
 
   function mediana(xs) {
@@ -619,7 +703,7 @@
       var n = (porPieza[e.pieza_id] || []).filter(function (x) { return x.tipo === 'correccion' && x.etapa === e.etapa; }).length;
       (rondas[e.etapa] = rondas[e.etapa] || []).push(n);
     });
-    var rondasEtapa = Object.keys(ETAPA_LABEL).filter(function (k) { return rondas[k]; }).map(function (k) {
+    var rondasEtapa = Object.keys(ETAPA_LABEL).filter(function (k) { return rondas[k] && k !== 'copy'; }).map(function (k) {
       return { etapa: k, label: ETAPA_LABEL[k], promedio: promedio(rondas[k]), piezas: rondas[k].length, sinCorrecciones: rondas[k].filter(function (n) { return n === 0; }).length };
     });
 
@@ -719,10 +803,8 @@
     var dia = ajustes && ajustes.grabacion_dia != null ? +ajustes.grabacion_dia : 2;
     var hora = ajustes && horaValida(ajustes.grabacion_hora) ? ajustes.grabacion_hora : '11:00';
     var fecha = addDias(lunes, (dia + 6) % 7);
-    if (momento(fecha, hora) < ahora.getTime()) {
-      fecha = addDias(hoy, 1);
-      if (fecha >= addDias(lunes, 7)) fecha = addDias(hoy, 1); // la semana se acabó: se propone mañana igual
-    }
+    // Si ese día ya pasó, se propone mañana (si mañana sigue siendo esta semana); si no, hoy mismo.
+    if (momento(fecha, hora) < ahora.getTime()) fecha = addDias(hoy, 1) < addDias(lunes, 7) ? addDias(hoy, 1) : hoy;
     return { semana: lunes, fecha: fecha, hora: hora, estado: 'propuesta', confirmaciones: [] };
   }
   function grabacionDeSemana(grabaciones, hoy) {
@@ -804,8 +886,8 @@
   function nombreEtapa(e) { return ETAPA_LABEL[e] || e || ''; }
 
   function msgEnvio(p, base, nombre) {
-    var visual = p.etapa === 'video' || p.etapa === 'diseno';
-    return (nombre ? 'Hola ' + nombre + ', ' : '') + 'te dejé para revisar: *' + p.titulo + '* — ' + nombreEtapa(p.etapa) + ' v' + p.version + '.' +
+    var visual = etapaNorm(p) === 'video' || etapaNorm(p) === 'diseno';
+    return (nombre ? 'Hola ' + nombre + ', ' : '') + 'te dejé para revisar: *' + p.titulo + '* — ' + nombreEtapa(etapaNorm(p)) + ' v' + p.version + '.' +
       (visual ? '\nTe mando el archivo por aquí 👇' : '') +
       '\nApruébalo o corrígelo en la app: ' + enlacePieza(base, p.id);
   }
@@ -820,7 +902,7 @@
   }
   function msgAprobacion(p, ev, base, siguiente) {
     return '✅ Aprobado: *' + p.titulo + '* — ' + nombreEtapa(ev.etapa) + '.' +
-      (siguiente ? '\nSigue: ' + nombreEtapa(siguiente) + '.' : (ev.datos && ev.datos.banco ? '\nQuedó en el banco (sin fecha).' : '\nYa tiene fecha en el calendario.')) +
+      (siguiente ? '\nSigue: ' + nombreEtapa(siguiente) + '.' : (ev.datos && (ev.datos.sinfecha || ev.datos.banco) ? '\nQuedó lista, todavía sin fecha.' : '\nYa tiene fecha en el calendario.')) +
       '\n' + enlacePieza(base, p.id);
   }
   function msgResumenLote(items, base) {
@@ -840,7 +922,8 @@
     hoyISO: hoyISO, addDias: addDias, diaSemana: diaSemana, diffDias: diffDias, fmtFecha: fmtFecha, fmtFechaLarga: fmtFechaLarga,
     horasEntre: horasEntre, haceCuanto: haceCuanto, fmtHoras: fmtHoras,
     plataformasDe: plataformasDe, fechaDe: fechaDe, publicadoEn: publicadoEn, pendientesDePublicar: pendientesDePublicar,
-    etapasDe: etapasDe, ocupa: ocupa, diaCfg: diaCfg, cron: cron, slotTipo: slotTipo, publicable: publicable, cabe: cabe, checklistDe: checklistDe, minimo: minimo, enBanco: enBanco, estadoDe: estadoDe,
+    etapasDe: etapasDe, etapaNorm: etapaNorm, esFinal: esFinal, gruposChips: gruposChips, COLUMNAS: COLUMNAS, columnaDe: columnaDe, leToca: leToca, pasosDe: pasosDe,
+    entrega: entrega, proximaFecha: proximaFecha, fechaLimite: fechaLimite, accionAGrabacion: accionAGrabacion, eventosEtapaActual: eventosEtapaActual, ocupa: ocupa, diaCfg: diaCfg, cron: cron, slotTipo: slotTipo, publicable: publicable, cabe: cabe, checklistDe: checklistDe, minimo: minimo, enBanco: enBanco, estadoDe: estadoDe,
     ocupado: ocupado, slotLibre: slotLibre, sugerirFechas: sugerirFechas, validarFechas: validarFechas,
     huecos: huecos, candidatosHueco: candidatosHueco,
     nuevaPieza: nuevaPieza, accionEnviar: accionEnviar, accionAprobar: accionAprobar, accionCorregir: accionCorregir,

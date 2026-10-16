@@ -49,11 +49,12 @@
   // ---------- Modo demo ----------
   function DemoStore(semilla) {
     this.modo = 'demo';
-    this.clave = 'bfcontenido_demo_v1';
+    this.clave = 'bfcontenido_demo_v2';
     this.semilla = semilla;
     this.db = LS.get(this.clave);
     if (!this.db || !this.db.piezas) { this.db = semilla(); this._guardar(); }
     if (!this.db.grabaciones) { var s = semilla(); this.db.grabaciones = s.grabaciones || []; this.db.grabacion_eventos = s.grabacion_eventos || []; Object.assign(this.db.ajustes, { grabacion_dia: 2, grabacion_hora: '11:00' }, this.db.ajustes); this._guardar(); }
+    if (!this.db.push_subs) { this.db.push_subs = []; this._guardar(); }
     var u = LS.get('bfcontenido_demo_usuario');
     this.usuarioId = (u && this.db.equipo.some(function (e) { return e.user_id === u; })) ? u : this.db.equipo[0].user_id;
   }
@@ -77,6 +78,12 @@
   DemoStore.prototype.insertar = function (tabla, fila) {
     var ahora = new Date().toISOString();
     var f = Object.assign({}, fila);
+    if (tabla === 'push_subs') {
+      f.user_id = this.usuarioId;
+      this.db.push_subs = this.db.push_subs.filter(function (r) { return r.endpoint !== f.endpoint; });
+      this.db.push_subs.push(f); this._guardar();
+      return Promise.resolve(copia(f));
+    }
     if (tabla === 'equipo') {
       f.user_id = f.user_id || this.usuarioId;
       this.db.equipo = this.db.equipo.filter(function (e) { return e.user_id !== f.user_id; });
@@ -95,6 +102,14 @@
     this._guardar();
     return Promise.resolve(copia(f));
   };
+  DemoStore.prototype.eliminar = function (tabla, filtros) {
+    var lista = this.db[tabla] || [];
+    this.db[tabla] = lista.filter(function (r) { return !coincide(r, filtros); });
+    this._guardar();
+    return Promise.resolve();
+  };
+  DemoStore.prototype.funcion = function () { return Promise.reject(errorUsuario('Las notificaciones no funcionan en modo demo.')); };
+  DemoStore.prototype.funcionPublica = function () { return Promise.reject(errorUsuario('Las notificaciones no funcionan en modo demo.')); };
   DemoStore.prototype.actualizar = function (tabla, id, patch, match) {
     var clave = tabla === 'equipo' ? 'user_id' : 'id';
     var fila = (this.db[tabla] instanceof Array ? this.db[tabla] : [this.db[tabla]]).filter(function (r) { return r[clave] === id; })[0];
@@ -222,8 +237,37 @@
       return { equipo: r[0] || [], ajustes: (r[1] && r[1][0]) || null, piezas: r[2] || [], eventos: r[3] || [], grabaciones: r[4] || [], grabacion_eventos: r[5] || [] };
     });
   };
-  SupabaseStore.prototype.insertar = function (tabla, fila) {
-    return this._rest('POST', tabla, fila, { Prefer: 'return=representation' }).then(function (r) { return (r && r[0]) || null; });
+  SupabaseStore.prototype.insertar = function (tabla, fila, opciones) {
+    var pref = 'return=representation' + (opciones && opciones.upsert ? ',resolution=merge-duplicates' : '');
+    return this._rest('POST', tabla, fila, { Prefer: pref }).then(function (r) { return (r && r[0]) || null; });
+  };
+  SupabaseStore.prototype.eliminar = function (tabla, filtros) {
+    var qs = Object.keys(filtros || {}).map(function (k) { return filtro(k, filtros[k]); });
+    if (!qs.length) return Promise.reject(errorUsuario('Falta el filtro para borrar.'));
+    return this._rest('DELETE', tabla + '?' + qs.join('&'), null, {});
+  };
+  // Llama a la función de notificaciones con la sesión de la usuaria
+  SupabaseStore.prototype.funcion = function (nombre, cuerpo) {
+    var self = this;
+    return self._token().then(function (tok) {
+      return self._pedir(self.url + '/functions/v1/' + nombre, {
+        method: 'POST', headers: { apikey: self.key, Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo || {})
+      });
+    }).then(function (r) {
+      if (r.status === 404) throw errorUsuario('Falta instalar la función de notificaciones en Supabase (paso 6 de la guía).');
+      if (!r.ok) throw errorUsuario('Notificaciones: ' + mensajeDe(r.cuerpo, 'error ' + r.status));
+      return r.cuerpo;
+    });
+  };
+  SupabaseStore.prototype.funcionPublica = function (nombre, params) {
+    var self = this;
+    var qs = Object.keys(params || {}).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); }).join('&');
+    return self._pedir(self.url + '/functions/v1/' + nombre + (qs ? '?' + qs : ''), { method: 'GET', headers: { apikey: self.key } }).then(function (r) {
+      if (r.status === 404) throw errorUsuario('Falta instalar la función de notificaciones en Supabase (paso 6 de la guía).');
+      if (r.status === 401) throw errorUsuario('La función de notificaciones pide JWT: desactiva «Verify JWT» en Supabase (paso 6 de la guía).');
+      if (!r.ok) throw errorUsuario('Notificaciones: ' + mensajeDe(r.cuerpo, 'error ' + r.status));
+      return r.cuerpo;
+    });
   };
   SupabaseStore.prototype.actualizar = function (tabla, id, patch, match) {
     var clave = tabla === 'equipo' ? 'user_id' : 'id';
