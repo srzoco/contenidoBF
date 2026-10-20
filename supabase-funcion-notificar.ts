@@ -1259,7 +1259,7 @@ var self = globalThis;
           var r0 = await enviarMensajes([{ user_id: uid, titulo: '🔔 Prueba de Contenido Barquero', cuerpo: 'Si ves esto, las notificaciones funcionan en este dispositivo.', hash: '#/ajustes', tag: 'prueba' }], cfg);
           return json(r0);
         }
-        if (req.headers.get('x-bf-secreto') !== cfg.secreto) return json({ error: 'no autorizado' }, 401);
+        if (!cfg || !cfg.secreto || req.headers.get('x-bf-secreto') !== cfg.secreto) return json({ error: 'no autorizado' }, 401);
         var equipo = await db('GET', 'equipo?select=*');
         if (cuerpo.tipo === 'evento') {
           var mensajes = [];
