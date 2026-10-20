@@ -1,6 +1,25 @@
-/* Contenido Barquero — service worker: solo notificaciones (no guarda caché para no mostrar versiones viejas) */
+/* Contenido Barquero — service worker: notificaciones y caché de los archivos con versión (?v=).
+   La página y config.js siempre se piden primero a internet, así que nunca se ve una versión vieja;
+   los .js/.css con ?v= se guardan y abren al instante. Al publicar, sube el ?v= en index.html. */
+var CACHE = 'contenido-archivos';
 self.addEventListener('install', function () { self.skipWaiting(); });
 self.addEventListener('activate', function (e) { e.waitUntil(self.clients.claim()); });
+self.addEventListener('fetch', function (e) {
+  var req = e.request, url = new URL(req.url);
+  if (req.method !== 'GET' || url.origin !== location.origin || !/[?&]v=/.test(url.search) || /config\.js$/.test(url.pathname)) return;
+  e.respondWith(caches.open(CACHE).then(function (c) {
+    return c.match(req).then(function (hit) {
+      return hit || fetch(req).then(function (r) {
+        if (r.ok) {
+          c.put(req, r.clone());
+          // borra las versiones anteriores del mismo archivo
+          c.keys().then(function (ks) { ks.forEach(function (k) { var u = new URL(k.url); if (u.pathname === url.pathname && u.search !== url.search) c.delete(k); }); });
+        }
+        return r;
+      });
+    });
+  }));
+});
 
 self.addEventListener('push', function (e) {
   var d = {};
