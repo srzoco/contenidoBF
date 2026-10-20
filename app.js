@@ -573,6 +573,7 @@
     html += historialHtml(p);
     html += '<div class="mas-acciones">' +
       (!p.en_espera && p.fase !== 'publicada' && p.fase !== 'archivada' ? '<button class="btn sec" data-act="espera" data-id="' + p.id + '">📦 En espera de mercancía</button>' : '') +
+      (L.puedeVolverAIdea(p) ? '<button class="btn sec" data-act="a-idea" data-id="' + p.id + '">💡 Volver a ideas</button>' : '') +
       (p.fase === 'archivada' ? '<button class="btn sec" data-act="reabrir" data-id="' + p.id + '">Reabrir</button>' : '<button class="btn fantasma" data-act="archivar" data-id="' + p.id + '">Archivar</button>') +
       '</div></article>';
     return html;
@@ -1240,6 +1241,11 @@
       var p = pieza(el.dataset.id), r;
       try { r = L.accionIniciar(p, {}); } catch (e) { return aviso(e.message); }
       accion(function () { return ejecutar(p, r); }, function () { S.flash = { titulo: p.tipo === 'reel' ? '🎬 Grabado' : '▶️ En producción', texto: '«' + p.titulo + '» pasó a edición.' }; });
+    },
+    'a-idea': function (el) {
+      var p = pieza(el.dataset.id), r;
+      try { r = L.accionVolverAIdea(p); } catch (e) { return aviso(e.message); }
+      accion(function () { return ejecutar(p, r); }, function () { S.flash = { titulo: '💡 Volvió a ideas', texto: '«' + p.titulo + '» queda en Ideas hasta que se grabe.' }; });
     },
     'a-grabacion': function (el) {
       var p = pieza(el.dataset.id), r;

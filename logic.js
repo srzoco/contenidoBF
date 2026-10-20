@@ -540,6 +540,14 @@
       eventos: [{ tipo: 'editada', texto: grabacionId ? 'planificada para grabar' : 'quitada de la grabación', datos: { grabacion_id: grabacionId || null } }] };
   }
 
+  // Vuelve a ideas una pieza que se pasó a edición por error (todavía no se ha enviado ninguna versión)
+  function puedeVolverAIdea(p) { return p.fase === 'produccion' && (p.version || 0) === 0 && p.turno === 'edita' && p.etapa === ETAPAS[p.tipo][0]; }
+  function accionVolverAIdea(p) {
+    if (!puedeVolverAIdea(p)) throw err('Solo se puede devolver a ideas antes de enviar la primera versión.');
+    return { patch: { fase: 'idea', etapa: null, turno: null, version: 0 }, match: { fase: 'produccion', version: 0 },
+      eventos: [{ tipo: 'editada', texto: 'volvió a ideas (no se había grabado)', datos: null }] };
+  }
+
   function puedeCambiarTipo(p) {
     return p.fase === 'idea' || (p.fase === 'produccion' && p.etapa === ETAPAS[p.tipo][0] && (p.version || 0) === 0 && p.turno === 'edita');
   }
@@ -923,7 +931,7 @@
     horasEntre: horasEntre, haceCuanto: haceCuanto, fmtHoras: fmtHoras,
     plataformasDe: plataformasDe, fechaDe: fechaDe, publicadoEn: publicadoEn, pendientesDePublicar: pendientesDePublicar,
     etapasDe: etapasDe, etapaNorm: etapaNorm, esFinal: esFinal, gruposChips: gruposChips, COLUMNAS: COLUMNAS, columnaDe: columnaDe, leToca: leToca, pasosDe: pasosDe,
-    entrega: entrega, proximaFecha: proximaFecha, fechaLimite: fechaLimite, accionAGrabacion: accionAGrabacion, eventosEtapaActual: eventosEtapaActual, ocupa: ocupa, diaCfg: diaCfg, cron: cron, slotTipo: slotTipo, publicable: publicable, cabe: cabe, checklistDe: checklistDe, minimo: minimo, enBanco: enBanco, estadoDe: estadoDe,
+    entrega: entrega, proximaFecha: proximaFecha, fechaLimite: fechaLimite, accionAGrabacion: accionAGrabacion, puedeVolverAIdea: puedeVolverAIdea, accionVolverAIdea: accionVolverAIdea, eventosEtapaActual: eventosEtapaActual, ocupa: ocupa, diaCfg: diaCfg, cron: cron, slotTipo: slotTipo, publicable: publicable, cabe: cabe, checklistDe: checklistDe, minimo: minimo, enBanco: enBanco, estadoDe: estadoDe,
     ocupado: ocupado, slotLibre: slotLibre, sugerirFechas: sugerirFechas, validarFechas: validarFechas,
     huecos: huecos, candidatosHueco: candidatosHueco,
     nuevaPieza: nuevaPieza, accionEnviar: accionEnviar, accionAprobar: accionAprobar, accionCorregir: accionCorregir,
