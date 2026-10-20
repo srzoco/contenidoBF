@@ -575,3 +575,5 @@ button.filtro { cursor: pointer; font-family: var(--sans); }
 .logo { background: #001E54; color: #fff; }
 .plat.tt { background: var(--gray-bg); color: var(--ink); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .plat.tt { background: var(--gray-bg); color: var(--ink); } }
+.menu-cil { flex: none; border-color: transparent; background: transparent; }
+.menu-cil svg { width: 22px; height: 22px; }

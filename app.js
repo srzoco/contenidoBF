@@ -181,6 +181,7 @@
         (badge ? '<b class="badge">' + badge + '</b>' : '') + '</a>';
     };
     return '<header class="top">' +
+      (demo ? '' : '<a href="../cil/" class="icono-btn menu-cil" aria-label="Volver al menú de CIL" title="Menú de CIL"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></a>') +
       '<a href="#/" class="marca"><span class="logo">B</span><span class="marca-txt">Contenido<small>Barquero</small></span></a>' +
       (demo ? '<div class="demo-rol" role="group" aria-label="Ver como">' + S.data.equipo.map(function (e) {
         return '<button type="button" data-act="demo-rol" data-id="' + esc(e.user_id) + '" aria-pressed="' + (ses && ses.user.id === e.user_id) + '">' + esc(e.nombre) + '</button>';
