@@ -577,3 +577,4 @@ button.filtro { cursor: pointer; font-family: var(--sans); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .plat.tt { background: var(--gray-bg); color: var(--ink); } }
 .menu-cil { flex: none; border-color: transparent; background: transparent; }
 .menu-cil svg { width: 22px; height: 22px; }
+.titulo-fila { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; } .titulo-fila h1 { min-width: 0; overflow-wrap: anywhere; }

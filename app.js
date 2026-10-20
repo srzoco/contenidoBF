@@ -537,7 +537,7 @@
     var html = '<a href="#/tablero" class="volver" data-act="volver">‹ Volver</a>' +
       '<article class="pieza t-' + p.tipo + '">' +
       '<header class="pieza-head"><div class="tarjeta-top">' + tipoTag(p, true) + badgesPlat(p) + '</div>' +
-      '<h1>' + esc(p.titulo) + '</h1><div class="pieza-estado">' + pill(p) + limiteChip(p) + '</div>' + stepper(p) + '</header>';
+      '<div class="titulo-fila"><h1>' + esc(p.titulo) + '</h1><button class="btn link chico" data-act="editar" data-id="' + p.id + '" aria-label="Cambiar el nombre">✏️ Cambiar nombre</button></div><div class="pieza-estado">' + pill(p) + limiteChip(p) + '</div>' + stepper(p) + '</header>';
     if (p.fase === 'idea') html += bloqueIdea(p);
     if (p.fase === 'produccion') {
       if (p.turno === 'aprueba') {
