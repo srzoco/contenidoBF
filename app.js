@@ -299,10 +299,18 @@
         html += '<section class="hero tranquilo"><p class="hero-t">Nada por aprobar ✨</p></section>';
       }
       if (r.riesgo.length) html += seccion('⚠️ Se publican pronto y no están aprobadas', lista(r.riesgo.map(function (x) { return tarjeta(x.pieza); })), { clase: 'alerta' });
-      if (r.atrasadas.length) html += seccion('No se publicaron a tiempo', lista(r.atrasadas.map(function (x) { return tarjeta(x.pieza); })), { clase: 'alerta' });
+      if (r.atrasadas.length) html += seccion('No se publicaron a tiempo', '<div class="lista-tarjetas">' + r.atrasadas.map(function (x) {
+        return '<div class="fila-accion">' + tarjeta(x.pieza, L.PLATAFORMAS[x.plataforma] + ' · era ' + L.fmtFecha(x.fecha)) +
+          '<button class="btn sec" data-act="publicar" data-id="' + x.pieza.id + '" data-plat="' + x.plataforma + '">Ya se publicó en ' + L.PLAT_CORTO[x.plataforma] + '</button></div>';
+      }).join('') + '</div>', { clase: 'alerta' });
       if (r.programar.length) html += seccion('Listas sin fecha · ponles día', lista(r.programar.map(function (p) { return tarjeta(p); })));
       html += seccion('Huecos en los próximos 7 días', listaHuecos(r.huecos, 4));
-      if (r.hoy.length) html += seccion('Hoy se publica', lista(r.hoy.map(function (x) { return tarjeta(x.pieza, L.PLATAFORMAS[x.plataforma]); })));
+      // Un botón por plataforma: si va en IG hoy y en TikTok otro día, cada una se marca por separado
+      if (r.hoy.length) html += seccion('Hoy se publica', '<div class="lista-tarjetas">' + r.hoy.map(function (x) {
+        var listo = x.pieza.fase === 'aprobada' && !L.publicadoEn(x.pieza, x.plataforma);
+        return '<div class="fila-accion">' + tarjeta(x.pieza, L.PLATAFORMAS[x.plataforma]) +
+          (listo ? '<button class="btn" data-act="publicar" data-id="' + x.pieza.id + '" data-plat="' + x.plataforma + '">Publicado en ' + L.PLAT_CORTO[x.plataforma] + '</button>' : '') + '</div>';
+      }).join('') + '</div>');
     } else {
       var hay = false;
       if (r.publicar.length) {
