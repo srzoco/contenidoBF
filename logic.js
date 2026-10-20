@@ -545,7 +545,7 @@
   function accionVolverAIdea(p) {
     if (!puedeVolverAIdea(p)) throw err('Solo se puede devolver a ideas antes de enviar la primera versión.');
     return { patch: { fase: 'idea', etapa: null, turno: null, version: 0 }, match: { fase: 'produccion', version: 0 },
-      eventos: [{ tipo: 'editada', texto: 'volvió a ideas (no se había grabado)', datos: null }] };
+      eventos: [{ tipo: 'editada', texto: 'volvió a ideas (no se había grabado)', datos: {} }] };
   }
 
   function puedeCambiarTipo(p) {
