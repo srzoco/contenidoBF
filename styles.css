@@ -1,26 +1,26 @@
 /* Contenido Barquero — estilos */
 :root {
   /* Base de marca Barquero Food: azul #001E54 y gris #B7B6B5. Amarillo y naranja no se usan (son señales de venta). */
-  --bg: #f4f6fa;
-  --card: #ffffff;
-  --ink: #1e2635;
-  --muted: #687185;
-  --line: #e1e5ee;
-  --accent: #1d3a72;
-  --accent-ink: #ffffff;
-  --accent-bg: #e9eef8;
-  --wine: #b04f5a;
-  --wine-bg: #fbeef0;
-  --amber: #93661f;
-  --amber-bg: #fbf3e3;
-  --blue: #3b6aa0;
-  --blue-bg: #eaf1fa;
-  --green: #2f7a54;
-  --green-bg: #e7f4ec;
+  --bg: #F4F6FA;
+  --card: #FFFFFF;
+  --ink: #0E1A33;
+  --muted: #4D5870;
+  --line: #D9DFEA;
+  --accent: #001E54;
+  --accent-ink: #FFFFFF;
+  --accent-bg: #E5EBF5;
+  --wine: #A3263A;
+  --wine-bg: #FBE9EC;
+  --amber: #8A4B00;
+  --amber-bg: #FCEFD9;
+  --blue: #1F4F8F;
+  --blue-bg: #E4EDF9;
+  --green: #1E6B42;
+  --green-bg: #E0F2E8;
   --purple: #806a45;
   --purple-bg: #f5efe5;
-  --gray-bg: #eef1f6;
-  --wa: #1f8a4c;
+  --gray-bg: #EDF0F5;
+  --wa: #1A7F43;
   --reel: #1f7c84;
   --reel-bg: #e2f2f3;
   --carr: #6658c4;
@@ -28,27 +28,27 @@
   --shadow: 0 1px 2px rgba(20, 30, 60, .05), 0 4px 14px rgba(20, 30, 60, .05);
   --radius: 14px;
   --serif: "Gloock", Georgia, "Times New Roman", serif;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --sans: "Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #121826; --card: #1a2232; --ink: #e8ebf2; --muted: #9aa3b5; --line: #2a3346;
-    --accent: #9db8ea; --accent-ink: #0f1626; --accent-bg: #1f2b44;
-    --wine: #e8a0a8; --wine-bg: #3a2329; --amber: #e3bd7a; --amber-bg: #352b1b;
-    --blue: #9cc1ea; --blue-bg: #1b2a3e; --green: #8fd3ab; --green-bg: #1a3227;
-    --purple: #d6bd91; --purple-bg: #2f2a20; --gray-bg: #212a3b; --wa: #3cc472;
+  :root:not([data-theme="claro"]) {
+    --bg: #0A1328; --card: #111E3A; --ink: #EEF2F9; --muted: #A9B4CA; --line: #22325A;
+    --accent: #A9C2F5; --accent-ink: #001E54; --accent-bg: #1A2A50;
+    --wine: #F29AA7; --wine-bg: #3A1D29; --amber: #F2BE72; --amber-bg: #3A2C17;
+    --blue: #9CC0F0; --blue-bg: #18294A; --green: #86D6A6; --green-bg: #15312A;
+    --purple: #d6bd91; --purple-bg: #2f2a20; --gray-bg: #1A2747; --wa: #3CC472;
     --reel: #7fd0d6; --reel-bg: #173235; --carr: #b9b1f2; --carr-bg: #262445;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 18px rgba(0, 0, 0, .25);
     color-scheme: dark;
   }
 }
-:root[data-theme="dark"] {
-  --bg: #121826; --card: #1a2232; --ink: #e8ebf2; --muted: #9aa3b5; --line: #2a3346;
-  --accent: #9db8ea; --accent-ink: #0f1626; --accent-bg: #1f2b44;
-  --wine: #e8a0a8; --wine-bg: #3a2329; --amber: #e3bd7a; --amber-bg: #352b1b;
-  --blue: #9cc1ea; --blue-bg: #1b2a3e; --green: #8fd3ab; --green-bg: #1a3227;
-  --purple: #d6bd91; --purple-bg: #2f2a20; --gray-bg: #212a3b; --wa: #3cc472;
+:root[data-theme="oscuro"] {
+  --bg: #0A1328; --card: #111E3A; --ink: #EEF2F9; --muted: #A9B4CA; --line: #22325A;
+  --accent: #A9C2F5; --accent-ink: #001E54; --accent-bg: #1A2A50;
+  --wine: #F29AA7; --wine-bg: #3A1D29; --amber: #F2BE72; --amber-bg: #3A2C17;
+  --blue: #9CC0F0; --blue-bg: #18294A; --green: #86D6A6; --green-bg: #15312A;
+  --purple: #d6bd91; --purple-bg: #2f2a20; --gray-bg: #1A2747; --wa: #3CC472;
   --reel: #7fd0d6; --reel-bg: #173235; --carr: #b9b1f2; --carr-bg: #262445;
   color-scheme: dark;
 }
@@ -81,7 +81,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .marca { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); margin-right: auto; }
 .logo {
   width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: var(--accent-ink);
-  display: grid; place-items: center; font: 700 1.15rem/1 var(--serif);
+  display: grid; place-items: center; font: 400 .8rem/1 var(--serif); letter-spacing: .02em;
 }
 .logo.grande { width: 64px; height: 64px; border-radius: 18px; font-size: 2rem; }
 .marca-txt { font: 600 1.05rem/1.05 var(--serif); display: flex; flex-direction: column; }
@@ -459,7 +459,7 @@ ol.ranking li a { flex: 1; min-width: 140px; color: var(--ink); text-decoration:
 .tarjeta.en-espera { background: repeating-linear-gradient(135deg, var(--card), var(--card) 10px, var(--purple-bg) 10px, var(--purple-bg) 12px); }
 .tarjeta-top, .tarjeta-pie { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .8rem; }
 .tarjeta-titulo { font-weight: 650; line-height: 1.25; overflow-wrap: anywhere; }
-.tarjeta-extra { font-size: .82rem; color: var(--wine); }
+.tarjeta-extra { font-size: .82rem; color: var(--muted); }
 .fechas-txt { font-weight: 600; color: var(--ink); }
 .turno { margin-left: auto; padding: 2px 9px; border-radius: 999px; font-weight: 700; font-size: .75rem; background: var(--gray-bg); color: var(--muted); white-space: nowrap; }
 .turno.mio { background: var(--accent); color: var(--accent-ink); }
@@ -584,3 +584,22 @@ button.filtro { cursor: pointer; font-family: var(--sans); }
 .quien { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 30vw; }
 @media (max-width: 400px) { .top { gap: 6px; padding-left: 12px; padding-right: 12px; } .marca-txt small { display: none; } }
 @media (max-width: 350px) { .marca-txt { display: none; } }
+.logo.grande { font-size: 1.35rem; } .top .boton-tema { flex: none; width: 36px; height: 36px; }
+/* Barrita de pasos en las tarjetas */
+.mini-pasos { display: flex; align-items: center; gap: 3px; margin: 6px 0 2px; }
+.mini-pasos i { flex: 1; max-width: 26px; height: 5px; border-radius: 3px; background: var(--line); }
+.mini-pasos i.h { background: var(--accent); }
+.mini-pasos i.act { background: var(--accent); opacity: .55; }
+.mini-pasos i.corr { background: var(--wine); }
+.mini-pasos small { margin-left: 6px; color: var(--muted); font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.turno.tranca { background: var(--wine-bg); color: var(--wine); }
+/* Inicio: una sola lista y la planificación plegada */
+.bloque-head h2 .cuenta { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; margin-left: 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font: 700 .8rem/1 var(--sans); vertical-align: middle; }
+details.mas > summary, details.plegable > summary { cursor: pointer; font-weight: 600; color: var(--accent); padding: 10px 0; list-style: none; }
+details.mas > summary::-webkit-details-marker, details.plegable > summary::-webkit-details-marker { display: none; }
+details.plegable { padding: 4px 16px 12px; margin-top: 16px; }
+details.plegable > summary { display: flex; flex-direction: column; gap: 2px; color: var(--ink); }
+details.plegable h3 { font-size: 1rem; margin: 10px 0 6px; }
+input.buscar[data-ir-buscar] { margin: 4px 0 14px; }
+.tarjeta-extra b { color: var(--ink); } .tarjeta-extra .rojo { color: var(--wine); font-weight: 600; }
+.stepper li.actual.corr .punto { border-color: var(--wine); color: var(--wine); box-shadow: 0 0 0 4px var(--wine-bg); } .stepper li.actual.corr .paso-txt { color: var(--wine); }

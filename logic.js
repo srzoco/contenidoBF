@@ -421,6 +421,27 @@
     return { patch: patch, match: matchDe(p), eventos: [ev] };
   }
 
+  // Deshacer errores: una aprobación hecha sin querer (mientras no se haya publicado en ninguna plataforma)
+  function puedeVolverARevision(p) { return p.fase === 'aprobada' && !plataformasDe(p).some(function (pl) { return publicadoEn(p, pl); }); }
+  function accionVolverARevision(p) {
+    if (!puedeVolverARevision(p)) throw err('Solo se puede devolver a revisión si todavía no se publicó.');
+    var etapas = etapasDe(p);
+    return { patch: { fase: 'produccion', etapa: etapas[etapas.length - 1], turno: 'aprueba' }, match: { fase: 'aprobada' },
+      eventos: [{ tipo: 'editada', texto: 'volvió a revisión (se aprobó por error)', datos: {} }] };
+  }
+  // …y un «publicado» marcado por error (hasta 24 horas después)
+  function puedeDesmarcarPublicado(p, plat, ahora) {
+    var t = publicadoEn(p, plat);
+    return !!t && ((ahora ? new Date(ahora) : new Date()) - new Date(t)) < 24 * 3600 * 1000;
+  }
+  function accionDesmarcarPublicado(p, plat, ahora) {
+    if (!puedeDesmarcarPublicado(p, plat, ahora)) throw err('Solo se puede desmarcar en las 24 horas después de marcarlo.');
+    var patch = {}; patch['publicado_' + plat + '_en'] = null; patch['enlace_' + plat] = null;
+    if (p.fase === 'publicada') patch.fase = 'aprobada';
+    var m = {}; m['publicado_' + plat + '_en'] = publicadoEn(p, plat);
+    return { patch: patch, match: m, eventos: [{ tipo: 'editada', texto: 'se desmarcó «publicado» en ' + PLATAFORMAS[plat] + ' (fue por error)', datos: {} }] };
+  }
+
   function accionCorregir(p, datos) {
     exigirProduccion(p, 'aprueba');
     datos = datos || {};
@@ -931,7 +952,8 @@
     horasEntre: horasEntre, haceCuanto: haceCuanto, fmtHoras: fmtHoras,
     plataformasDe: plataformasDe, fechaDe: fechaDe, publicadoEn: publicadoEn, pendientesDePublicar: pendientesDePublicar,
     etapasDe: etapasDe, etapaNorm: etapaNorm, esFinal: esFinal, gruposChips: gruposChips, COLUMNAS: COLUMNAS, columnaDe: columnaDe, leToca: leToca, pasosDe: pasosDe,
-    entrega: entrega, proximaFecha: proximaFecha, fechaLimite: fechaLimite, accionAGrabacion: accionAGrabacion, puedeVolverAIdea: puedeVolverAIdea, accionVolverAIdea: accionVolverAIdea, eventosEtapaActual: eventosEtapaActual, ocupa: ocupa, diaCfg: diaCfg, cron: cron, slotTipo: slotTipo, publicable: publicable, cabe: cabe, checklistDe: checklistDe, minimo: minimo, enBanco: enBanco, estadoDe: estadoDe,
+    entrega: entrega, proximaFecha: proximaFecha, fechaLimite: fechaLimite, accionAGrabacion: accionAGrabacion, puedeVolverARevision: puedeVolverARevision, accionVolverARevision: accionVolverARevision,
+    puedeDesmarcarPublicado: puedeDesmarcarPublicado, accionDesmarcarPublicado: accionDesmarcarPublicado, puedeVolverAIdea: puedeVolverAIdea, accionVolverAIdea: accionVolverAIdea, eventosEtapaActual: eventosEtapaActual, ocupa: ocupa, diaCfg: diaCfg, cron: cron, slotTipo: slotTipo, publicable: publicable, cabe: cabe, checklistDe: checklistDe, minimo: minimo, enBanco: enBanco, estadoDe: estadoDe,
     ocupado: ocupado, slotLibre: slotLibre, sugerirFechas: sugerirFechas, validarFechas: validarFechas,
     huecos: huecos, candidatosHueco: candidatosHueco,
     nuevaPieza: nuevaPieza, accionEnviar: accionEnviar, accionAprobar: accionAprobar, accionCorregir: accionCorregir,

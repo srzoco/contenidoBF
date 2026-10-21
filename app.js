@@ -182,10 +182,11 @@
     };
     return '<header class="top">' +
       (demo ? '' : '<a href="../cil/" class="icono-btn menu-cil" aria-label="Volver al menú de CIL" title="Menú de CIL"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></a>') +
-      '<a href="#/" class="marca"><span class="logo">B</span><span class="marca-txt">Contenido<small>Barquero</small></span></a>' +
+      '<a href="#/" class="marca"><span class="logo">CIL</span><span class="marca-txt">Contenido<small>CIL</small></span></a>' +
       (demo ? '<div class="demo-rol" role="group" aria-label="Ver como">' + S.data.equipo.map(function (e) {
         return '<button type="button" data-act="demo-rol" data-id="' + esc(e.user_id) + '" aria-pressed="' + (ses && ses.user.id === e.user_id) + '">' + esc(e.nombre) + '</button>';
       }).join('') + '</div>' : '<span class="quien">' + esc((yo() || {}).nombre || '') + '</span>') +
+      (window.BarqueroTema ? window.BarqueroTema.boton() : '') +
       (sinNav ? '' : '<a href="#/ajustes" class="icono-btn' + (sec === 'ajustes' ? ' activo' : '') + '" aria-label="Ajustes">' + ICON.ajustes + '</a>') +
       '</header>' +
       (demo ? '<div class="franja-demo">Modo demo · los cambios se guardan solo en este dispositivo.</div>' : '') +
@@ -222,8 +223,11 @@
     var t = L.leToca(p);
     if (!t) return '';
     var y = rol();
-    var txt = t === 'ambas' ? 'Grabación' : (t === y ? 'Te toca' : nombreRol(t));
-    return '<span class="turno ' + (t === y ? 'mio' : t === 'ambas' ? 'ambas' : 'otro') + '">' + (t === y ? '👉 ' : '') + esc(txt) + '</span>';
+    // De quién es el turno y desde cuándo espera (para ver lo que está trancado del otro lado)
+    var dias = p.actualizado_en ? L.diffDias(L.hoyISO(new Date(p.actualizado_en)), S.hoy) : 0;
+    var hace = dias >= 2 ? ' · ' + dias + ' días' : '';
+    var txt = t === 'ambas' ? 'Grabación' : (t === y ? 'Te toca' : 'Le toca a ' + nombreRol(t));
+    return '<span class="turno ' + (t === y ? 'mio' : t === 'ambas' ? 'ambas' : 'otro') + (dias >= 3 ? ' tranca' : '') + '">' + esc(txt + hace) + '</span>';
   }
   // Fecha límite (entregar) o espera de mercancía
   function limiteChip(p) {
@@ -241,10 +245,19 @@
     var buscar = [p.titulo, p.producto, p.espera_producto, L.estadoDe(p, S.hoy).texto].join(' ').toLowerCase();
     return '<a class="tarjeta t-' + p.tipo + (p.en_espera ? ' en-espera' : '') + '" href="#/p/' + p.id + '" data-buscar="' + esc(buscar) + '">' +
       '<span class="tarjeta-top">' + tipoTag(p) + badgesPlat(p) + turnoChip(p) + '</span>' +
-      '<span class="tarjeta-titulo">' + esc(p.titulo) + '</span>' +
+      '<span class="tarjeta-titulo">' + esc(p.titulo) + '</span>' + miniPasos(p) +
       '<span class="tarjeta-pie">' + (f ? '<span class="fechas-txt">📅 ' + esc(f) + '</span>' : '<span class="fechas-txt muted">Sin fecha</span>') + limiteChip(p) + '</span>' +
       (extra ? '<span class="tarjeta-extra">' + extra + '</span>' : '') +
       '</a>';
+  }
+  // Barrita de pasos en cada tarjeta: idea → … → publicada. En corrección, el paso de edición sale en rojo.
+  function miniPasos(p) {
+    var s = L.pasosDe(p);
+    if (s.actual < 0) return '';
+    var corr = p.fase === 'produccion' && p.turno === 'edita' && (p.version || 0) > 0;
+    return '<span class="mini-pasos" title="Paso ' + (s.actual + 1) + ' de ' + s.pasos.length + ': ' + esc(s.pasos[s.actual]) + '">' + s.pasos.map(function (n, i) {
+      return '<i class="' + (i < s.actual || s.terminado ? 'h' : i === s.actual ? (corr ? 'corr' : 'act') : '') + '"></i>';
+    }).join('') + '<small>' + esc(corr ? 'Corrección v' + p.version : s.pasos[s.actual]) + '</small></span>';
   }
   function resumenCorreccion(ev) {
     if (!ev) return '';
@@ -252,20 +265,22 @@
     var partes = (d.chips || []).slice();
     (d.puntos || []).forEach(function (x) { partes.push((x.ubicacion ? x.ubicacion + ': ' : '') + (x.texto || '')); });
     if (ev.texto) partes.push(ev.texto);
-    return '✏️ ' + esc(partes.join(' · '));
+    return '<span class="rojo">✏️ ' + esc(partes.join(' · ')) + '</span>';
   }
   function stepper(p) {
     var s = L.pasosDe(p);
     if (s.actual < 0) return '';
     var html = '<ol class="stepper" aria-label="Recorrido de la pieza">';
     s.pasos.forEach(function (nombre, i) {
-      var estado = (s.terminado || i < s.actual) ? 'hecho' : i === s.actual ? 'actual' : 'falta';
+      var corr = p.fase === 'produccion' && p.turno === 'edita' && (p.version || 0) > 0;
+      var estado = (s.terminado || i < s.actual) ? 'hecho' : i === s.actual ? ('actual' + (corr ? ' corr' : '')) : 'falta';
       html += '<li class="' + estado + '"' + (estado === 'actual' ? ' aria-current="step"' : '') + '><span class="punto">' + (estado === 'hecho' ? '✓' : i + 1) + '</span><span class="paso-txt">' + esc(nombre) + '</span></li>';
     });
     html += '</ol>';
     var t = L.leToca(p);
     var quien = !t ? '' : t === 'ambas' ? 'se graba en la sesión semanal' : (t === rol() ? 'te toca a ti' : 'le toca a ' + nombreRol(t));
-    return html + '<p class="paso-actual">Paso ' + (s.actual + 1) + ' de ' + s.pasos.length + ': <b>' + esc(s.pasos[s.actual]) + '</b>' + (quien ? ' · ' + esc(quien) : '') + '</p>';
+    var enCorr = p.fase === 'produccion' && p.turno === 'edita' && (p.version || 0) > 0;
+    return html + '<p class="paso-actual">Paso ' + (s.actual + 1) + ' de ' + s.pasos.length + ': <b>' + esc(s.pasos[s.actual]) + '</b>' + (enCorr ? ' <span class="rojo">· corrección v' + p.version + '</span>' : '') + (quien ? ' · ' + esc(quien) : '') + '</p>';
   }
   function seccion(titulo, contenido, opciones) {
     opciones = opciones || {};
@@ -287,57 +302,44 @@
     if (st === 'instalar') return '<div class="aviso-push">🔔 Para recibir notificaciones, agrega la app a tu pantalla de inicio (Compartir → «Agregar a inicio») y ábrela desde ahí. <button class="btn link" data-act="ocultar-push">Ahora no</button></div>';
     return '<div class="aviso-push">🔔 <span>Activa las notificaciones para enterarte cuando te toque algo.</span> <button class="btn chico" data-act="activar-push">Activar</button> <button class="btn link" data-act="ocultar-push">Ahora no</button></div>';
   }
+  // Inicio: «Lo que te toca hoy» en una sola lista ordenada por urgencia (máximo 5 a la vista; el resto plegado)
+  // y la planificación (huecos y esperas) plegada debajo.
   function vistaInicio() {
     var r = L.pendientes(piezas(), eventos(), rol(), S.hoy, ajustes());
     var html = '<h1 class="saludo">' + saludo() + ', ' + esc(yo().nombre) + '</h1><p class="fecha-hoy">' + L.fmtFechaLarga(S.hoy) + ' · ' + esc(hoyToca()) + '</p>';
+    html += '<input type="search" class="buscar" placeholder="Buscar pieza o producto" data-ir-buscar aria-label="Buscar pieza o producto">';
     html += bannerPush();
     html += tarjetaGrabacion(grabSemana(), true);
+    var acc = [];  // [html de la fila]
+    var conBoton = function (p, extra, boton) { return '<div class="fila-accion">' + tarjeta(p, extra) + boton + '</div>'; };
+    var botonPub = function (x, txt, sec) { return '<button class="btn' + (sec ? ' sec' : '') + '" data-act="publicar" data-id="' + x.pieza.id + '" data-plat="' + x.plataforma + '">' + txt + ' ' + L.PLAT_CORTO[x.plataforma] + '</button>'; };
     if (rol() === 'aprueba') {
-      if (r.revisar.length) {
-        html += '<section class="hero"><div><p class="hero-n">' + r.revisar.length + '</p><p class="hero-t">' + (r.revisar.length === 1 ? 'pieza espera tu aprobación' : 'piezas esperan tu aprobación') + '</p></div>' +
-          '<a class="btn grande" href="#/revisar">Revisar todo</a></section>' + lista(r.revisar.map(function (p) { return tarjeta(p); }));
-      } else {
-        html += '<section class="hero tranquilo"><p class="hero-t">Nada por aprobar ✨</p></section>';
-      }
-      if (r.riesgo.length) html += seccion('⚠️ Se publican pronto y no están aprobadas', lista(r.riesgo.map(function (x) { return tarjeta(x.pieza); })), { clase: 'alerta' });
-      if (r.atrasadas.length) html += seccion('No se publicaron a tiempo', '<div class="lista-tarjetas">' + r.atrasadas.map(function (x) {
-        return '<div class="fila-accion">' + tarjeta(x.pieza, L.PLATAFORMAS[x.plataforma] + ' · era ' + L.fmtFecha(x.fecha)) +
-          '<button class="btn sec" data-act="publicar" data-id="' + x.pieza.id + '" data-plat="' + x.plataforma + '">Ya se publicó en ' + L.PLAT_CORTO[x.plataforma] + '</button></div>';
-      }).join('') + '</div>', { clase: 'alerta' });
-      if (r.programar.length) html += seccion('Listas sin fecha · ponles día', lista(r.programar.map(function (p) { return tarjeta(p); })));
-      html += seccion('Huecos en los próximos 7 días', listaHuecos(r.huecos, 4));
-      // Un botón por plataforma: si va en IG hoy y en TikTok otro día, cada una se marca por separado
-      if (r.hoy.length) html += seccion('Hoy se publica', '<div class="lista-tarjetas">' + r.hoy.map(function (x) {
+      r.hoy.forEach(function (x) {
         var listo = x.pieza.fase === 'aprobada' && !L.publicadoEn(x.pieza, x.plataforma);
-        return '<div class="fila-accion">' + tarjeta(x.pieza, L.PLATAFORMAS[x.plataforma]) +
-          (listo ? '<button class="btn" data-act="publicar" data-id="' + x.pieza.id + '" data-plat="' + x.plataforma + '">Publicado en ' + L.PLAT_CORTO[x.plataforma] + '</button>' : '') + '</div>';
-      }).join('') + '</div>');
+        acc.push(conBoton(x.pieza, '<b>Hoy se publica</b> · ' + L.PLATAFORMAS[x.plataforma], listo ? botonPub(x, 'Publicado en') : ''));
+      });
+      r.atrasadas.forEach(function (x) { acc.push(conBoton(x.pieza, '<span class="rojo">No se publicó</span> · ' + L.PLATAFORMAS[x.plataforma] + ' · era ' + L.fmtFecha(x.fecha), botonPub(x, 'Ya se publicó en', true))); });
+      r.riesgo.forEach(function (x) { acc.push(tarjeta(x.pieza, '<span class="rojo">Se publica pronto y no está aprobada</span>')); });
+      r.revisar.forEach(function (p) { acc.push(tarjeta(p, '<b>Por aprobar</b>')); });
+      r.programar.forEach(function (p) { acc.push(tarjeta(p, 'Lista sin fecha · ponle día')); });
     } else {
-      var hay = false;
-      if (r.publicar.length) {
-        hay = true;
-        html += seccion('Publicar hoy', '<div class="lista-tarjetas">' + r.publicar.map(function (x) {
-          return '<div class="fila-accion">' + tarjeta(x.pieza, '<b>' + L.PLATAFORMAS[x.plataforma] + '</b>' + (x.atrasada ? ' · era ' + L.fmtFecha(x.fecha) : '')) +
-            '<button class="btn" data-act="publicar" data-id="' + x.pieza.id + '" data-plat="' + x.plataforma + '">Publicar en ' + L.PLAT_CORTO[x.plataforma] + '</button></div>';
-        }).join('') + '</div>', { clase: 'destacado' });
-      }
-      if (r.editar.length) {
-        hay = true;
-        html += seccion('Tu cola de edición', '<p class="ayuda">Ordenada por fecha de publicación: arriba lo más urgente.</p>' + lista(r.editar.map(function (p) {
-          return tarjeta(p, p.version > 0 ? resumenCorreccion(L.ultimaCorreccion(eventos(), p)) : '');
-        })));
-      }
-      if (r.vistas.length) {
-        hay = true;
-        html += seccion('Anotar vistas (7 días)', '<div class="lista-tarjetas">' + r.vistas.map(function (x) {
-          return '<div class="fila-accion">' + tarjeta(x.pieza, L.PLATAFORMAS[x.plataforma]) + '<button class="btn sec" data-act="vistas" data-id="' + x.pieza.id + '">Anotar</button></div>';
-        }).join('') + '</div>');
-      }
-      if (!hay) html += '<section class="hero tranquilo"><p class="hero-t">Todo al día ✨</p><p class="muted">Cuando grabes algo nuevo, créalo con el botón +.</p></section>';
-      if (r.revisar.length) html += '<p class="nota-suave">Esperando aprobación de ' + esc(nombreRol('aprueba')) + ': ' + plural(r.revisar.length, 'pieza', 'piezas') + '.</p>';
-      html += seccion('Huecos en los próximos 7 días', listaHuecos(r.huecos, 3));
+      r.publicar.forEach(function (x) { acc.push(conBoton(x.pieza, '<b>' + L.PLATAFORMAS[x.plataforma] + '</b>' + (x.atrasada ? ' · era ' + L.fmtFecha(x.fecha) : ''), botonPub(x, 'Publicar en'))); });
+      r.editar.forEach(function (p) { acc.push(tarjeta(p, p.version > 0 ? resumenCorreccion(L.ultimaCorreccion(eventos(), p)) : 'Por editar')); });
+      r.vistas.forEach(function (x) { acc.push(conBoton(x.pieza, 'Anotar vistas · ' + L.PLATAFORMAS[x.plataforma], '<button class="btn sec" data-act="vistas" data-id="' + x.pieza.id + '">Anotar</button>')); });
     }
-    html += listaEsperas();
+    var cab = '<div class="bloque-head"><h2>Te toca hoy' + (acc.length ? ' <span class="cuenta">' + acc.length + '</span>' : '') + '</h2>' +
+      (rol() === 'aprueba' && r.revisar.length ? '<a class="btn chico" href="#/revisar">Revisar ' + r.revisar.length + ' seguidas</a>' : '') + '</div>';
+    if (!acc.length) html += '<section class="hero tranquilo"><p class="hero-t">Todo al día</p><p class="muted">' + (rol() === 'aprueba' ? 'Nada por aprobar ni por publicar.' : 'Cuando grabes algo nuevo, créalo con el botón +.') + '</p></section>';
+    else html += '<section class="bloque">' + cab + '<div class="lista-tarjetas">' + acc.slice(0, 5).join('') + '</div>' +
+      (acc.length > 5 ? '<details class="mas"><summary>Ver ' + (acc.length - 5) + ' más</summary><div class="lista-tarjetas">' + acc.slice(5).join('') + '</div></details>' : '') + '</section>';
+    if (rol() !== 'aprueba' && r.revisar.length) html += '<p class="nota-suave">Le toca a ' + esc(nombreRol('aprueba')) + ' aprobar ' + plural(r.revisar.length, 'pieza', 'piezas') + '.</p>';
+    // Planificación plegada
+    var esperas = L.esperasPorProducto(piezas());
+    if (r.huecos.length || esperas.length) {
+      html += '<details class="card plegable"><summary><b>Planificación</b><span class="muted">' +
+        [r.huecos.length ? plural(r.huecos.length, 'hueco', 'huecos') + ' en 7 días' : '', esperas.length ? plural(esperas.length, 'producto', 'productos') + ' en espera' : ''].filter(Boolean).join(' · ') +
+        '</span></summary>' + (r.huecos.length ? '<h3>Huecos en los próximos 7 días</h3>' + listaHuecos(r.huecos, 4) : '') + listaEsperas() + '</details>';
+    }
     return html;
   }
   function listaHuecos(hs, max) {
@@ -352,7 +354,7 @@
   function listaEsperas() {
     var g = L.esperasPorProducto(piezas());
     if (!g.length) return '';
-    return seccion('📦 En espera de mercancía', '<div class="lista">' + g.map(function (x) {
+    return seccion('En espera de mercancía', '<div class="lista">' + g.map(function (x) {
       return '<div class="item"><span class="item-cuerpo"><span class="item-titulo">' + esc(x.producto) + '</span>' +
         '<span class="item-meta"><span class="muted">' + plural(x.piezas.length, 'pieza', 'piezas') + (x.desde ? ' · desde ' + L.fmtFecha(x.desde) : '') + '</span></span>' +
         '<span class="sub-lista">' + x.piezas.map(function (p) { return '<a href="#/p/' + p.id + '">' + esc(p.titulo) + '</a>'; }).join('') + '</span></span>' +
@@ -573,6 +575,7 @@
     html += historialHtml(p);
     html += '<div class="mas-acciones">' +
       (!p.en_espera && p.fase !== 'publicada' && p.fase !== 'archivada' ? '<button class="btn sec" data-act="espera" data-id="' + p.id + '">📦 En espera de mercancía</button>' : '') +
+      (L.puedeVolverARevision(p) && rol() === 'aprueba' ? '<button class="btn sec" data-act="a-revision" data-id="' + p.id + '">↩ Volver a revisión</button>' : '') +
       (L.puedeVolverAIdea(p) ? '<button class="btn sec" data-act="a-idea" data-id="' + p.id + '">💡 Volver a ideas</button>' : '') +
       (p.fase === 'archivada' ? '<button class="btn sec" data-act="reabrir" data-id="' + p.id + '">Reabrir</button>' : '<button class="btn fantasma" data-act="archivar" data-id="' + p.id + '">Archivar</button>') +
       '</div></article>';
@@ -600,14 +603,15 @@
   function bloqueFechasPieza(p) {
     if (['idea', 'produccion', 'aprobada', 'publicada'].indexOf(p.fase) < 0) return '';
     var tiene = !!L.proximaFecha(p);
-    var html = '<section class="card fechas-card"><div class="bloque-head"><h2>📅 Publicación</h2>' +
+    var html = '<section class="card fechas-card"><div class="bloque-head"><h2>Publicación</h2>' +
       (p.fase !== 'publicada' && !p.en_espera ? '<button class="btn ' + (tiene ? 'link' : 'chico') + '" data-act="fechas" data-id="' + p.id + '">' + (tiene ? 'Cambiar fechas' : 'Ponerle fecha') + '</button>' : '') + '</div>';
     html += '<div class="pub-filas">' + L.plataformasDe(p).map(function (pl) {
       var pub = L.publicadoEn(p, pl), f = L.fechaDe(p, pl);
       var linea = '<div class="pub-fila"><span class="plat ' + pl + (pub ? ' pub' : '') + '">' + L.PLAT_CORTO[pl] + '</span><span class="pub-info">';
       if (pub) {
         linea += 'Publicado ' + fmtFechaHora(pub) + (p['enlace_' + pl] ? ' · <a href="' + esc(p['enlace_' + pl]) + '" target="_blank" rel="noopener">ver post</a>' : '') +
-          (p['vistas_' + pl] != null ? ' · <b>' + Number(p['vistas_' + pl]).toLocaleString('es') + '</b> vistas' : '');
+          (p['vistas_' + pl] != null ? ' · <b>' + Number(p['vistas_' + pl]).toLocaleString('es') + '</b> vistas' : '') +
+          (L.puedeDesmarcarPublicado(p, pl) ? ' · <button class="btn link" data-act="desmarcar-pub" data-id="' + p.id + '" data-plat="' + pl + '">No se publicó</button>' : '');
       } else if (f) linea += f < S.hoy ? '<span class="rojo">Era el ' + L.fmtFecha(f) + '</span>' : L.fmtFechaLarga(f);
       else linea += '<span class="muted">' + (p.en_espera ? 'En espera' : 'Sin fecha') + '</span>';
       linea += '</span>';
@@ -855,7 +859,7 @@
     var yoConfirme = (g.confirmaciones || []).indexOf(y.user_id) >= 0;
     var porGrabar = piezas().filter(function (p) { return p.grabacion_id === g.id && p.fase === 'idea'; }).length;
     var clase = 'card grabacion' + (e.urgente || e.pasada ? ' urgente' : '') + (g.estado === 'hecha' ? ' hecha' : '') + (g.estado === 'cancelada' ? ' cancelada' : '');
-    var html = '<section class="' + clase + '"><div class="bloque-head"><h2>🎬 Grabación de la semana</h2>' +
+    var html = '<section class="' + clase + '"><div class="bloque-head"><h2>Grabación de la semana</h2>' +
       (resumen ? '<a class="btn link" href="#/grabacion/' + g.id + '">Ver qué grabar ›</a>' : '') + '</div>' +
       '<p class="grab-cuando">' + esc(cuandoG(g)) + '</p>';
     if (g.estado === 'hecha') return html + '<p class="vacio-ok">✅ Grabado</p><button class="btn link" data-act="reabrir-grab" data-id="' + g.id + '">Reabrir</button></section>';
@@ -988,7 +992,7 @@
   function vistaAjustes() {
     var aj = ajustes();
     var editable = rol() === 'aprueba';
-    var html = '<h1>Ajustes</h1>' + seccion('Tu perfil', formPerfil(yo())) + seccion('🔔 Notificaciones', bloquePushAjustes());
+    var html = '<h1>Ajustes</h1>' + seccion('Tu perfil', formPerfil(yo())) + seccion('Notificaciones', bloquePushAjustes());
     var cr = L.cron(aj);
     html += seccion('Cronograma', '<form data-form="ajustes" class="card"><div class="cron"><div class="cron-fila cron-head"><span></span><b>Instagram</b><b>TikTok</b></div>' + [1, 2, 3, 4, 5, 6, 0].map(function (i) {
       return '<div class="cron-fila"><b>' + L.DIAS[i] + '</b>' + ['ig', 'tt'].map(function (pl) {
@@ -1014,7 +1018,7 @@
     return html + '<p class="ayuda version">Contenido Barquero · v4</p>';
   }
   function vistaLogin() {
-    return '<div class="login"><div class="login-marca"><span class="logo grande">B</span><h1>Contenido</h1><p class="muted">Barquero · aprobaciones y calendario</p></div>' +
+    return '<div class="login"><div class="login-marca"><span class="logo grande">CIL</span><h1>Contenido</h1><p class="muted">Barquero · aprobaciones y calendario</p></div>' +
       '<form data-form="login" class="card"><label class="campo">Correo<input type="email" name="email" required autocomplete="username" inputmode="email"></label>' +
       '<label class="campo">Contraseña<input type="password" name="clave" required autocomplete="current-password"></label>' +
       '<button class="btn grande" type="submit">Entrar</button></form></div>';
@@ -1241,6 +1245,16 @@
       var p = pieza(el.dataset.id), r;
       try { r = L.accionIniciar(p, {}); } catch (e) { return aviso(e.message); }
       accion(function () { return ejecutar(p, r); }, function () { S.flash = { titulo: p.tipo === 'reel' ? '🎬 Grabado' : '▶️ En producción', texto: '«' + p.titulo + '» pasó a edición.' }; });
+    },
+    'a-revision': function (el) {
+      var p = pieza(el.dataset.id), r;
+      try { r = L.accionVolverARevision(p); } catch (e) { return aviso(e.message); }
+      accion(function () { return ejecutar(p, r); }, function () { S.flash = { titulo: 'Volvió a revisión', texto: '«' + p.titulo + '» queda por aprobar otra vez.' }; });
+    },
+    'desmarcar-pub': function (el) {
+      var p = pieza(el.dataset.id), r;
+      try { r = L.accionDesmarcarPublicado(p, el.dataset.plat); } catch (e) { return aviso(e.message); }
+      accion(function () { return ejecutar(p, r); }, function () { S.flash = { titulo: 'Desmarcado', texto: 'Ya no figura como publicado en ' + L.PLATAFORMAS[el.dataset.plat] + '.' }; });
     },
     'a-idea': function (el) {
       var p = pieza(el.dataset.id), r;
@@ -1536,6 +1550,7 @@
   document.addEventListener('input', function (e) {
     var t = e.target;
     if (t.matches('[data-buscar-en]')) { aplicarBusqueda(t); return; }
+    if (t.matches('[data-ir-buscar]')) { clearTimeout(S.irBuscarT); S.irBuscarT = setTimeout(function () { if (t.value.trim()) { S.tablero.q = t.value; location.hash = '#/tablero'; } }, 600); return; }
     if (t.closest('form')) S.sucio = true;
     var fs = t.closest('fieldset.fechas');
     if (fs) actualizarFechas(fs);
