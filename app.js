@@ -296,6 +296,7 @@
     return 'IG: ' + L.TIPO_DIA[ig].toLowerCase() + ' · TikTok: ' + L.TIPO_DIA[tt].toLowerCase();
   }
   function bannerPush() {
+    return '';  // los avisos ahora se activan en el menú de CIL (ver bloquePushAjustes)
     var st = S.push.estado;
     if (store.modo === 'demo' || ['apagado', 'instalar'].indexOf(st) < 0) return '';
     try { if (localStorage.getItem('bf_push_oculto') === '1') return ''; } catch (e) { /* nada */ }
@@ -978,6 +979,9 @@
       '<button class="btn" type="submit">Guardar</button></form>';
   }
   function bloquePushAjustes() {
+    return '<div class="card"><p>Los avisos de Contenido ahora llegan por <b>CIL</b>, junto con los demás.</p>' +
+      '<div class="acciones"><a class="btn" href="../cil/?avisos=1">Activarlos en el menú de CIL</a></div>' +
+      '<p class="ayuda">Se activan una sola vez por teléfono. Te avisa cuando te toca algo: piezas por aprobar, correcciones, fechas nuevas y la grabación. Cada mañana, un resumen de lo que se publica y lo que vence.</p></div>';
     var st = S.push.estado;
     var txt = {
       cargando: 'Revisando…', nosoporta: 'Este navegador no permite notificaciones.', instalar: 'En iPhone, primero agrega la app a la pantalla de inicio (Compartir → «Agregar a inicio») y ábrela desde ahí.',
@@ -1591,7 +1595,13 @@
   }
 
   // ---------- Arranque ----------
-  revisarPush().then(function () { if (S.data) render(); });
+  // Los avisos propios de Contenido se reemplazaron por los de CIL: se quita la suscripción vieja de este teléfono
+  revisarPush().then(function () {
+    if (S.push.estado === 'activo' && store.modo !== 'demo') {
+      swRegistro().then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) { if (sub) return sub.unsubscribe(); }).catch(function () { /* nada */ });
+    }
+    if (S.data) render();
+  });
   if (store.sesion()) recargar(); else { S.cargando = false; render(); }
   window.__bf = { S: S, store: store }; // ayuda para pruebas
 })();

@@ -1212,24 +1212,16 @@ var self = globalThis;
       filas = await db('GET', 'push_config?id=eq.1&select=*');
       return filas[0];
     }
+    // Desde que Contenido está dentro de CIL, los avisos no se mandan desde aquí: se dejan en la cola de avisos
+    // de CIL (avisos_cola) y el reloj de avisos de CIL los entrega en menos de un minuto, con el logo de CIL,
+    // a los teléfonos donde cada persona activó los avisos en el menú de CIL.
     async function enviarMensajes(mensajes, cfg) {
       if (!mensajes.length) return { enviadas: 0, fallidas: 0 };
-      var ids = mensajes.map(function (m) { return m.user_id; }).filter(function (x, i, a) { return a.indexOf(x) === i; });
-      var subs = await db('GET', 'push_subs?select=*&user_id=in.(' + ids.join(',') + ')');
-      var vapid = { publico: cfg.vapid_publico, privado: cfg.vapid_privado };
-      var enviadas = 0, fallidas = 0;
-      for (var i = 0; i < mensajes.length; i++) {
-        var m = mensajes[i];
-        var suyas = subs.filter(function (s) { return s.user_id === m.user_id; });
-        for (var j = 0; j < suyas.length; j++) {
-          try {
-            var r = await WP.enviar(suyas[j], { titulo: m.titulo, cuerpo: m.cuerpo, hash: m.hash, tag: m.tag }, vapid, { fetch: f });
-            if (r.ok) enviadas++; else fallidas++;
-            if (r.expirada) await db('DELETE', 'push_subs?endpoint=eq.' + encodeURIComponent(suyas[j].endpoint)).catch(function () { /* se reintenta la próxima vez */ });
-          } catch (e) { fallidas++; }
-        }
-      }
-      return { enviadas: enviadas, fallidas: fallidas };
+      var filas = mensajes.map(function (m) {
+        return { persona_id: m.user_id, titulo: m.titulo, cuerpo: m.cuerpo || '', url: '../contenidoBF/' + (m.hash || '#/') };
+      });
+      try { await db('POST', 'avisos_cola', filas, 'return=minimal'); return { enviadas: filas.length, fallidas: 0 }; }
+      catch (e) { return { enviadas: 0, fallidas: filas.length, error: String(e && e.message || e) }; }
     }
     async function usuarioDe(req) {
       var a = req.headers.get('authorization') || '';
@@ -1256,7 +1248,7 @@ var self = globalThis;
         if (cuerpo.tipo === 'prueba') {
           var uid = await usuarioDe(req);
           if (!uid) return json({ error: 'Inicia sesión para probar.' }, 401);
-          var r0 = await enviarMensajes([{ user_id: uid, titulo: '🔔 Prueba de Contenido Barquero', cuerpo: 'Si ves esto, las notificaciones funcionan en este dispositivo.', hash: '#/ajustes', tag: 'prueba' }], cfg);
+          var r0 = await enviarMensajes([{ user_id: uid, titulo: 'Prueba de Contenido', cuerpo: 'Si ves esto, los avisos de Contenido te llegan por CIL.', hash: '#/ajustes', tag: 'prueba' }], cfg);
           return json(r0);
         }
         if (!cfg || !cfg.secreto || req.headers.get('x-bf-secreto') !== cfg.secreto) return json({ error: 'no autorizado' }, 401);
