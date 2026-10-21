@@ -578,3 +578,9 @@ button.filtro { cursor: pointer; font-family: var(--sans); }
 .menu-cil { flex: none; border-color: transparent; background: transparent; }
 .menu-cil svg { width: 22px; height: 22px; }
 .titulo-fila { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; } .titulo-fila h1 { min-width: 0; overflow-wrap: anywhere; }
+/* Encabezado en teléfonos angostos: nada se sale de la pantalla */
+.top > * { min-width: 0; }
+.top .icono-btn { flex: none; }
+.quien { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 30vw; }
+@media (max-width: 400px) { .top { gap: 6px; padding-left: 12px; padding-right: 12px; } .marca-txt small { display: none; } }
+@media (max-width: 350px) { .marca-txt { display: none; } }
