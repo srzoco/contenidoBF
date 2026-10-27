@@ -139,6 +139,7 @@
     setTimeout(function () { if (S.toast && S.toast.t === t) { S.toast = null; pintarCapas(); } }, 6000);
   }
 
+  function arriba() { var d = document.querySelector('.desliza'); if (d) d.scrollTop = 0; window.scrollTo(0, 0); }
   // ---------- Pintado ----------
   function render() {
     var sesion = store.sesion();
@@ -148,7 +149,11 @@
     else if (S.error && !S.data) html = '<div class="centro"><p><b>No se pudieron cargar los datos.</b></p><p class="muted">' + esc(S.error) + '</p><button class="btn" data-act="reintentar">Reintentar</button> <button class="btn sec" data-act="salir">Salir</button></div>';
     else if (!yo()) html = marco('<h1>¡Hola! Antes de empezar</h1><p class="muted">Dinos quién eres para repartir bien las tareas.</p>' + formPerfil(null), true);
     else html = marco(vistaRuta());
+    // Al volver a pintar la misma pantalla, la lista se queda donde estaba
+    var dAntes = document.querySelector('.desliza'), yAntes = dAntes && S.rutaPintada === location.hash ? dAntes.scrollTop : 0;
     $app.innerHTML = html + '<div id="capas"></div>';
+    var dNuevo = document.querySelector('.desliza'); if (dNuevo && yAntes) dNuevo.scrollTop = yAntes;
+    S.rutaPintada = location.hash;
     pintarCapas();
     despuesDePintar();
     var b = document.querySelector('[data-buscar-en]');
@@ -186,7 +191,9 @@
       return '<a href="' + href + '" class="tab' + (activo ? ' activo' : '') + '"' + (activo ? ' aria-current="page"' : '') + '>' + icono + '<span>' + texto + '</span>' +
         (badge ? '<b class="badge">' + badge + '</b>' : '') + '</a>';
     };
-    return '<header class="top">' +
+    // La lista se desliza dentro de .desliza y la barra de abajo queda debajo, sin flotar
+    // (en el iPhone, una barra «fija» se quedaba a mitad de pantalla al subir y bajar o al cerrar el teclado)
+    return '<div class="desliza"><header class="top">' +
       (demo ? '' : '<a href="../cil/" class="icono-btn menu-cil" aria-label="Volver al menú de CIL" title="Menú de CIL"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></a>') +
       '<a href="#/" class="marca"><span class="logo">CIL</span><span class="marca-txt">Contenido<small>CIL</small></span></a>' +
       (demo ? '<div class="demo-rol" role="group" aria-label="Ver como">' + S.data.equipo.map(function (e) {
@@ -196,7 +203,7 @@
       (sinNav ? '' : '<a href="#/ajustes" class="icono-btn' + (sec === 'ajustes' ? ' activo' : '') + '" aria-label="Ajustes">' + ICON.ajustes + '</a>') +
       '</header>' +
       (demo ? '<div class="franja-demo">Modo demo · los cambios se guardan solo en este dispositivo.</div>' : '') +
-      '<main class="contenido' + (sec === 'tablero' ? ' ancho' : '') + '">' + contenido + '</main>' +
+      '<main class="contenido' + (sec === 'tablero' ? ' ancho' : '') + '">' + contenido + '</main></div>' +
       (sinNav ? '' :
         '<nav class="tabs">' +
         tab('#/', '', ICON.inicio, 'Inicio', pend) +
@@ -1207,7 +1214,7 @@
     'saltar': function () {
       var p = pieza(S.lote.ids[S.lote.i]);
       S.lote.hechos.push({ accion: 'saltada', titulo: p ? p.titulo : '', id: p && p.id });
-      S.lote.i++; S.sucio = false; render(); window.scrollTo(0, 0);
+      S.lote.i++; S.sucio = false; render(); arriba();
     },
     'terminar-lote': function () { S.lote = null; location.hash = '#/'; },
     'sugerir': function (el) { sugerirEn(el.closest('fieldset.fechas')); S.sucio = true; },
@@ -1412,7 +1419,7 @@
       try { r = L.accionAprobar(p, datos); } catch (e) { return aviso(e.message); }
       var lote = enLote();
       accion(function () { return ejecutar(p, r); }, function () {
-        if (lote) { S.lote.hechos.push({ accion: 'aprobada', titulo: p.titulo, etapa: p.etapa, id: p.id }); S.lote.i = S.lote.ids.indexOf(p.id) + 1; window.scrollTo(0, 0); return; }
+        if (lote) { S.lote.hechos.push({ accion: 'aprobada', titulo: p.titulo, etapa: p.etapa, id: p.id }); S.lote.i = S.lote.ids.indexOf(p.id) + 1; arriba(); return; }
         var ed = contraparte('edita');
         var sig = r.patch.etapa || null;
         var sinFecha = !sig && r.eventos[0].datos.sinfecha;
@@ -1434,7 +1441,7 @@
       try { r = L.accionCorregir(p, { chips: chips, puntos: puntos, comentario: val(f, 'comentario') }); } catch (e) { return aviso(e.message); }
       var lote = enLote();
       accion(function () { return ejecutar(p, r); }, function () {
-        if (lote) { S.lote.hechos.push({ accion: 'correccion', titulo: p.titulo, etapa: p.etapa, id: p.id }); S.lote.i = S.lote.ids.indexOf(p.id) + 1; window.scrollTo(0, 0); return; }
+        if (lote) { S.lote.hechos.push({ accion: 'correccion', titulo: p.titulo, etapa: p.etapa, id: p.id }); S.lote.i = S.lote.ids.indexOf(p.id) + 1; arriba(); return; }
         var ed = contraparte('edita');
         S.flash = { titulo: '✏️ Corrección enviada', texto: 'Le aparece a ' + (ed ? ed.nombre : 'edición') + ' como tarea.',
           wa: { href: L.waLink(ed && ed.telefono, L.msgCorreccion(p, r.eventos[0], base())), label: 'Avisar a ' + (ed ? ed.nombre : 'edición') + ' por WhatsApp' } };
@@ -1590,7 +1597,7 @@
     if (S.flash && S.flash.t && Date.now() - S.flash.t > 1500) S.flash = null;
     S.toast = null;
     render();
-    window.scrollTo(0, 0);
+    arriba();
   });
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'visible' && !S.sucio && !S.modal && !S.ocupado && store.sesion()) recargar(true);
