@@ -1,34 +1,21 @@
 <!doctype html>
-<html lang="es" class="marco-fijo">
+<html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Contenido Barquero</title>
-  <meta name="description" content="Aprobaciones, correcciones y calendario de publicaciones de Barquero.">
-  <meta name="theme-color" content="#001E54">
+  <title>Contenido · CIL</title>
   <meta name="robots" content="noindex, nofollow">
-  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#001E54">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Contenido">
-  <link rel="preconnect" href="https://xooofdppgnpibasambuc.supabase.co" crossorigin><!-- la base de datos (config.js) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gloock&family=Montserrat:wght@500;600;700&display=swap" media="print" onload="this.media='all'">
-  <!-- Colores, letras y botón claro/oscuro compartidos con CIL -->
-  <script src="../cil/comun/tema.js?v=1"></script>
-  <link rel="stylesheet" href="../cil/comun/tema.css?v=2">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <script>
+    // Contenido ahora vive dentro de CIL. Esta dirección vieja (íconos guardados y avisos viejos) lleva a la nueva,
+    // con la misma pantalla (lo que va después de #), y quita el guardado viejo de esta dirección.
+    try { navigator.serviceWorker && navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { if (/\/contenidoBF\/$/i.test(new URL(r.scope).pathname)) r.unregister(); }); }); } catch (e) { /* nada */ }
+    location.replace('../cil/contenido/' + location.hash);
+  </script>
 </head>
-<body>
-  <div id="app"><div class="centro"><div class="spinner"></div></div></div>
-  <noscript>Esta app necesita JavaScript.</noscript>
-  <script src="config.js?v=5"></script>
-  <script src="logic.js?v=8"></script>
-  <script src="demo.js?v=5"></script>
-  <script src="store.js?v=6"></script>
-  <script src="app.js?v=15"></script>
-  <script>if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(function () {});</script>
+<body style="font-family: system-ui, sans-serif; padding: 24px;">
+  <p>Contenido ahora está dentro de CIL. <a href="../cil/contenido/">Abrir Contenido</a></p>
 </body>
 </html>
