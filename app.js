@@ -1099,6 +1099,7 @@
       if (!f.wa) setTimeout(function () { if (S.flash === f) { S.flash = null; pintarCapas(); } }, 5000);
     }
     return '<div class="flash" role="status"><div class="flash-cuerpo"><p class="flash-t">' + esc(f.titulo) + '</p>' + (f.texto ? '<p>' + esc(f.texto) + '</p>' : '') +
+      (f.fechaId ? '<button class="btn grande" data-act="flash-fechas" data-id="' + esc(f.fechaId) + '">📅 Ponerle fecha ahora</button>' : '') +
       (f.wa ? '<a class="btn wa grande" target="_blank" rel="noopener" data-act="cerrar-flash-tarde" href="' + esc(f.wa.href) + '">' + ICON.wa + ' ' + esc(f.wa.label) + '</a>' : '') +
       '<button class="btn fantasma" data-act="cerrar-flash">' + (f.wa ? 'Ahora no' : 'Ok') + '</button></div></div>';
   }
@@ -1221,6 +1222,8 @@
     'hueco': function (el) { abrirModal({ tipo: 'hueco', fecha: el.dataset.fecha, plat: el.dataset.plat, tipoPieza: el.dataset.tipo }); },
     'cerrar-modal': function () { S.modal = null; S.sucio = false; pintarCapas(); },
     'cerrar-flash': function () { S.flash = null; pintarCapas(); },
+    // Al aprobar una pieza sin fecha: abre las fechas con una sugerencia lista para guardar
+    'flash-fechas': function (el) { S.flash = null; pintarCapas(); abrirModal({ tipo: 'fechas', id: el.dataset.id }); },
     'cerrar-flash-tarde': function () { setTimeout(function () { S.flash = null; pintarCapas(); }, 400); },
     'llego': function (el) {
       var p = pieza(el.dataset.id);
@@ -1406,7 +1409,9 @@
         if (lote) { S.lote.hechos.push({ accion: 'aprobada', titulo: p.titulo, etapa: p.etapa, id: p.id }); S.lote.i = S.lote.ids.indexOf(p.id) + 1; window.scrollTo(0, 0); return; }
         var ed = contraparte('edita');
         var sig = r.patch.etapa || null;
-        S.flash = { titulo: '✅ Aprobado', texto: sig ? 'Sigue: ' + L.nombreEtapa(sig) + '.' : (r.eventos[0].datos.sinfecha ? 'Quedó lista. Ponle fecha cuando quieras.' : 'Quedó lista y programada.'),
+        var sinFecha = !sig && r.eventos[0].datos.sinfecha;
+        S.flash = { titulo: '✅ Aprobado', texto: sig ? 'Sigue: ' + L.nombreEtapa(sig) + '.' : (sinFecha ? 'Quedó lista, pero no tiene fecha de publicación. ¿Se la pones ya?' : 'Quedó lista y programada.'),
+          fechaId: sinFecha ? p.id : null,
           wa: { href: L.waLink(ed && ed.telefono, L.msgAprobacion(p, r.eventos[0], base(), sig)), label: 'Avisar a ' + (ed ? ed.nombre : 'edición') + ' por WhatsApp' } };
       }, btn);
     },
