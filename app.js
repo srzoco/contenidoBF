@@ -74,6 +74,11 @@
   };
 
   // ---------- Carga de datos ----------
+  // Lo último que se vio queda guardado en el teléfono: la app abre al instante con eso y se actualiza por detrás
+  function claveCache() { var s = store.modo !== 'demo' && store.sesion(); return s && s.user ? 'bfcontenido_cache_' + s.user.id : null; }
+  function guardarCache(d) { var k = claveCache(); if (!k) return; try { localStorage.setItem(k, JSON.stringify(d)); } catch (e) { try { localStorage.removeItem(k); } catch (e2) { /* lleno */ } } }
+  function leerCache() { var k = claveCache(); if (!k) return null; try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+  function borrarCache() { var k = claveCache(); if (k) try { localStorage.removeItem(k); } catch (e) { /* nada */ } }
   function recargar(silencioso, sinPintar) {
     if (!store.sesion()) { S.cargando = false; render(); return Promise.resolve(); }
     if (!silencioso) S.cargando = true;
@@ -82,11 +87,12 @@
       var cambio = firma !== S.firma;
       S.firma = firma;
       S.data = d; S.hoy = L.hoyISO(); S.cargando = false; S.error = null;
+      if (cambio) guardarCache(d);
       if (asegurarGrabacion()) return;
       if (!sinPintar && (!silencioso || cambio)) render();
     }, function (e) {
       S.cargando = false;
-      if (e && e.sesion) { S.data = null; render(); return; }
+      if (e && e.sesion) { borrarCache(); S.data = null; render(); return; }
       if (!S.data) S.error = e.message || String(e);
       else aviso(e.message || String(e));
       render();
@@ -1169,7 +1175,7 @@
   // ---------- Acciones (clics) ----------
   var ACC = {
     'reintentar': function () { recargar(); },
-    'salir': function () { store.salir().then(function () { S.data = null; S.firma = ''; location.hash = '#/'; render(); }); },
+    'salir': function () { borrarCache(); store.salir().then(function () { S.data = null; S.firma = ''; location.hash = '#/'; render(); }); },
     'volver': function () { if (history.length > 1) history.back(); else location.hash = '#/'; },
     'demo-rol': function (el) { store.cambiarUsuario(el.dataset.id); S.lote = null; S.tablero.col = null; recargar(true).then(render); },
     'demo-reset': function () { if (confirm('¿Borrar los cambios y volver a los datos de ejemplo?')) { store.reiniciar(); S.lote = null; recargar(); } },
@@ -1607,6 +1613,9 @@
     }
     if (S.data) render();
   });
-  if (store.sesion()) recargar(); else { S.cargando = false; render(); }
+  if (store.sesion()) {
+    var guardado = leerCache();
+    if (guardado && guardado.piezas) { S.data = guardado; S.hoy = L.hoyISO(); S.cargando = false; render(); recargar(true); } else recargar();
+  } else { S.cargando = false; render(); }
   window.__bf = { S: S, store: store }; // ayuda para pruebas
 })();
